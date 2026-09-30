@@ -124,6 +124,7 @@ export default function App() {
             setTestInput={setTestSentence}
             onRunInspect={runInspection}
             tokenizerState={tokenizerState}
+            model={model}
           />
         )}
 

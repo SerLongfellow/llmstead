@@ -1,9 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BPETokenizerState, StepInspectionData, TransformerConfig } from '../types';
 import { BPETokenizer } from '../engine/bpeTokenizer';
 import { Sparkles, ChevronRight, Workflow, Repeat } from 'lucide-react';
 import { AttentionGrid } from './AttentionGrid';
 import { MergeHistory } from './MergeHistory';
+import { showTok, cosine, TokenChip } from './tokenUi';
+import { EmbeddingSpace } from './EmbeddingSpace';
+import { MicroTransformer } from '../engine/transformer';
 
 interface PipelineViewProps {
   inspectionData: StepInspectionData;
@@ -14,24 +17,12 @@ interface PipelineViewProps {
   onRunInspect: () => void;
   // How the tokenizer was built (for the Tokens stage)
   tokenizerState: BPETokenizerState;
+  model: MicroTransformer; // read only: for the embedding table
 }
 
 type Matrix = number[][];
 
-/** Make whitespace inside tokens visible */
-const showTok = (s: string) => s.replace(/ /g, '·').replace(/\n/g, '↵').replace(/\t/g, '→');
-
 const argmax = (row: number[]) => row.reduce((best, v, i) => (v > row[best] ? i : best), 0);
-
-const cosine = (a: number[], b: number[]) => {
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  return na && nb ? dot / Math.sqrt(na * nb) : 0;
-};
 
 // ── Small visual building blocks ──────────────────────────────────────────────
 
@@ -113,33 +104,6 @@ const VectorStrip: React.FC<{ label: React.ReactNode; vector: number[]; note?: s
   </div>
 );
 
-const TokenChip: React.FC<{ text: string; active?: boolean; onClick?: () => void; bg?: string; title?: string }> = ({
-  text,
-  active,
-  onClick,
-  bg,
-  title,
-}) => (
-  <span
-    onClick={onClick}
-    title={title}
-    className="font-mono"
-    style={{
-      display: 'inline-block',
-      padding: '2px 7px',
-      borderRadius: 4,
-      fontSize: '0.8rem',
-      fontWeight: 600,
-      cursor: onClick ? 'pointer' : 'default',
-      whiteSpace: 'pre',
-      color: 'var(--text-main)',
-      background: bg ?? (active ? 'rgba(245, 158, 11, 0.25)' : 'rgba(16, 185, 129, 0.12)'),
-      border: `1px solid ${active ? 'var(--accent-amber)' : 'transparent'}`,
-    }}
-  >
-    {showTok(text)}
-  </span>
-);
 
 const SectionTitle: React.FC<{ step: string; title: string; formula?: string }> = ({ step, title, formula }) => (
   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -202,11 +166,18 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
   setTestInput,
   onRunInspect,
   tokenizerState,
+  model,
 }) => {
   const seqLen = data.tokens.length;
   const [focus, setFocus] = useState<number>(Math.max(0, seqLen - 1));
   const [stage, setStage] = useState<string>('output');
   const [headSel, setHeadSel] = useState<number>(0);
+  // Copy of the embedding table, refreshed on every run. Training updates the live table in
+  // place, so a snapshot gives the embedding-space views a new reference to recompute from.
+  const embeddingSnapshot = useMemo(
+    () => model.getParameters().wTokenEmbed.map(row => row.slice()),
+    [model, data]
+  );
   const head = Math.min(headSel, config.numHeads - 1);
   // Weights may have changed (e.g. training) since the last pass, so re-run it on this
   // tab's input whenever the tab opens
@@ -392,6 +363,21 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
             ))}
           </DataTable>
           <Explain>First 4 of {config.dModel} values per vector. Click a row to follow that token.</Explain>
+
+          <SubHeading>Embedding space</SubHeading>
+          <Explain>
+            Every token in the vocabulary has a vector in the same table, so tokens can be compared by the direction their
+            vectors point. Training nudges tokens that are used in similar ways toward similar directions. Token math adds and
+            subtracts vectors, then shows which tokens land closest (the famous example is king − man + woman ≈ queen in large
+            models). With a small vocabulary most tokens are single characters, so try digits on the math dataset, letters, or a
+            larger vocab size in Setup. Results are only meaningful after training; with random weights they're noise.
+          </Explain>
+          <EmbeddingSpace
+            embeddings={embeddingSnapshot}
+            idToToken={tokenizerState.idToToken}
+            tokenizer={tokenizer}
+            focusTokenId={data.tokens[f]}
+          />
         </>
       );
     }
