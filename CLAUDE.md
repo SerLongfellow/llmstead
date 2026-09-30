@@ -1,0 +1,32 @@
+# LLM Breakdown
+
+Local React + Vite + TypeScript site for learning how LLMs work: train a tiny transformer from scratch in the browser and inspect every step. Long-term goal: a detailed tutorial covering the pipeline from tokenization → training → fine-tuning/RLHF → benchmarks.
+
+## Commands
+- `npm run dev` — dev server
+- `npm run build` — `tsc && vite build` (output in `dist/`, which is stale; rebuild)
+
+## Layout
+- `src/engine/` — hand-written, dependency-free ML code (intentional: it's meant to be read)
+  - `tensor.ts` — `MatrixMath`: matmul, transpose, softmax (+causal mask), layerNorm (no gain/bias), GELU. Plain `number[][]`.
+  - `transformer.ts` — `MicroTransformer`. **Post-LayerNorm** blocks (residual add → LN), no biases. `inspectForwardPass` captures every intermediate for the visualizers. `computeGradients` (backprop), `trainStep`, `evaluateLoss` (forward-only, for validation), `setOptimizer`. Throws if `dModel % numHeads !== 0`.
+  - `optimizer.ts` — `Optimizer` (SGD with L2, AdamW with decoupled weight decay), per-named-matrix state.
+  - `bpeTokenizer.ts` — character-level BPE with merge history (no pre-tokenization; merges can cross word boundaries).
+  - `datasets.ts` — 4 small sample datasets + `splitDataset()` (last ~15% held out, cut at a paragraph/line break).
+  - `generate.ts` — `sampleToken` (greedy when T ≤ 0.1) and `generateContinuation`.
+  - `benchmarks.ts` — prompt→expected-answer suites per dataset; `runBenchmarkSuite` greedy-decodes and labels each case `seen` vs `held-out` by checking the actual training text.
+- `src/components/` — one component per tab (Tuner, BPE, Datasets, Step Inspector, Attention Heatmaps, Training Dashboard) plus `BenchmarkPanel` (inside Training Dashboard).
+- `src/App.tsx` — owns state. Tokenizer is rebuilt via `useMemo` from `tokenizerCorpus` + `config.vocabSize` (the *target* vocab); never mutate it in place. The model is memoized **only on shape-changing settings**, so the learning rate and optimizer can change without resetting weights. Children get `effectiveConfig` (vocabSize = real tokenizer vocab).
+
+## Backprop
+`computeGradients` in `transformer.ts` is a full manual backward pass (per-op rules for LayerNorm, GELU and softmax live in `tensor.ts` as `*Backward`). `trainStep` clips to global grad-norm 1.0, then sends **every** parameter through `this.optimizer.step()`. `npm run gradcheck` (esbuild-bundles `scripts/gradcheck.ts`) compares every matrix against central finite differences (`src/engine/gradCheck.ts`); expect relative error ~1e-7. Consider making the derivation a tutorial tab.
+- With real gradients, AdamW lr ≈ 0.001 works best; the app default is still 0.01 and the Tuner slider is linear 0.001–0.05 (a log-scale slider is a good follow-up; SGD likely needs 0.05–1, untested).
+- Training windows are sampled at random from the train split (not slid sequentially).
+- Continuous training runs as many steps as fit in ~100 ms per tick (`TICK_BUDGET_MS`), then records one chart point (mean loss) and refreshes the Step Inspector; validation runs every 50 steps on ≤32 fixed windows. The Step button is still exactly one step.
+
+## Other notes / ideas
+- Shakespeare dataset is Coriolanus 1.1 + 1.3 (~15k chars, typed from memory, verse lines joined per speech); its validation split starts at scene 3.
+- The tiny datasets (code-python 38 train tokens, qa-dialogue 87) can only demonstrate overfitting.
+- Training Dashboard state (loss history) resets on tab switch because tabs are conditionally rendered.
+- "Reset" on the training chart clears history only; weights re-init when the architecture, tokenizer or dataset changes.
+- Future direction discussed: keep this in-browser toy engine for mechanics, and add a separate real-model tier (Python + PyTorch/Hugging Face backend, or transformers.js/WebGPU) for importing base models, LoRA/DPO fine-tuning, and benchmarking. Reuse the same visualizations across both.

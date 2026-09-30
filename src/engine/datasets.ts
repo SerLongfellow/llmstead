@@ -1,0 +1,382 @@
+import { DatasetOption } from '../types';
+
+export const SAMPLE_DATASETS: DatasetOption[] = [
+  {
+    id: 'shakespeare',
+    name: 'Tiny Shakespeare',
+    category: 'literature',
+    description: 'Coriolanus, Act 1 Scenes 1 and 3 (public domain) for learning archaic English vocabulary & rhythm.',
+    text: `FIRST CITIZEN:
+Before we proceed any further, hear me speak.
+
+ALL:
+Speak, speak.
+
+FIRST CITIZEN:
+You are all resolved rather to die than to famish?
+
+ALL:
+Resolved, resolved.
+
+FIRST CITIZEN:
+First, you know Caius Marcius is chief enemy to the people.
+
+ALL:
+We know't, we know't.
+
+FIRST CITIZEN:
+Let us kill him, and we'll have corn at our own price. Is't a verdict?
+
+ALL:
+No more talking on't; let it be done: away, away!
+
+SECOND CITIZEN:
+One word, good citizens.
+
+FIRST CITIZEN:
+We are accounted poor citizens, the patricians good. What authority surfeits on would relieve us: if they would yield us but the superfluity, while it were wholesome, we might think they relieved us humanely; but they think we are too dear: the leanness that afflicts us, the object of our misery, is as an inventory to particularise their abundance; our sufferance is a gain to them. Let us revenge this with our pikes, ere we become rakes: for the gods know I speak this in hunger for bread, not in thirst for revenge.
+
+SECOND CITIZEN:
+Would you proceed especially against Caius Marcius?
+
+FIRST CITIZEN:
+Against him first: he's a very dog to the commonalty.
+
+SECOND CITIZEN:
+Consider you what services he has done for his country?
+
+FIRST CITIZEN:
+Very well; and could be content to give him good report for't, but that he pays himself with being proud.
+
+SECOND CITIZEN:
+Nay, but speak not maliciously.
+
+FIRST CITIZEN:
+I say unto you, what he hath done famously, he did it to that end: though soft-conscienced men can be content to say it was for his country, he did it to please his mother, and to be partly proud; which he is, even till the altitude of his virtue.
+
+SECOND CITIZEN:
+What he cannot help in his nature, you account a vice in him. You must in no way say he is covetous.
+
+FIRST CITIZEN:
+If I must not, I need not be barren of accusations; he hath faults, with surplus, to tire in repetition. What shouts are these? The other side o' the city is risen: why stay we prating here? to the Capitol!
+
+ALL:
+Come, come.
+
+FIRST CITIZEN:
+Soft! who comes here?
+
+MENENIUS:
+What work's, my countrymen, in hand? where go you With bats and clubs? The matter? speak, I pray you.
+
+FIRST CITIZEN:
+Our business is not unknown to the senate; they have had inkling this fortnight what we intend to do, which now we'll show 'em in deeds. They say poor suitors have strong breaths: they shall know we have strong arms too.
+
+MENENIUS:
+Why, masters, my good friends, my honest neighbours, Will you undo yourselves?
+
+FIRST CITIZEN:
+We cannot, sir, we are undone already.
+
+MENENIUS:
+I tell you, friends, most charitable care Have the patricians for you. For your wants, Your suffering in this dearth, you may as well Strike at the heaven with your staves as lift them Against the Roman state, whose course will on The way it takes, cracking ten thousand curbs Of more strong link asunder than can ever Appear in your impediment. For the dearth, The gods, not the patricians, make it, and Your knees to them, not arms, must help. Alack, You slander the helms o' the state, who care for you Like fathers, when you curse them as enemies.
+
+FIRST CITIZEN:
+Care for us! True, indeed! They ne'er cared for us yet: suffer us to famish, and their store-houses crammed with grain; make edicts for usury, to support usurers; repeal any wholesome act established against the rich, and provide more piercing statutes daily, to chain up and restrain the poor. If the wars eat us not up, they will; and there's all the love they bear us.
+
+MENENIUS:
+Either you must Confess yourselves wondrous malicious, Or be accused of folly. I shall tell you A pretty tale: it may be you have heard it; But, since it serves my purpose, I will venture To stale 't a little more.
+
+FIRST CITIZEN:
+Well, I'll hear it, sir: yet you must not think to fob off our disgrace with a tale: but, an 't please you, deliver.
+
+MENENIUS:
+There was a time when all the body's members Rebelled against the belly, thus accused it: That only like a gulf it did remain I' the midst o' the body, idle and unactive, Still cupboarding the viand, never bearing Like labour with the rest, where the other instruments Did see and hear, devise, instruct, walk, feel, And, mutually participate, did minister Unto the appetite and affection common Of the whole body. The belly answered--
+
+FIRST CITIZEN:
+Well, sir, what answer made the belly?
+
+MENENIUS:
+Sir, I shall tell you. With a kind of smile, Which ne'er came from the lungs, but even thus-- For, look you, I may make the belly smile As well as speak--it tauntingly replied To the discontented members, the mutinous parts That envied his receipt; even so most fitly As you malign our senators for that They are not such as you.
+
+FIRST CITIZEN:
+Your belly's answer? What! The kingly-crowned head, the vigilant eye, The counsellor heart, the arm soldier, Our steed the leg, the tongue our trumpeter, With other muniments and petty helps In this our fabric, if that they--
+
+MENENIUS:
+What then? 'Fore me, this fellow speaks! What then? what then?
+
+FIRST CITIZEN:
+Should by the cormorant belly be restrain'd, Who is the sink o' the body,--
+
+MENENIUS:
+Well, what then?
+
+FIRST CITIZEN:
+The former agents, if they did complain, What could the belly answer?
+
+MENENIUS:
+I will tell you; If you'll bestow a small--of what you have little-- Patience awhile, you'll hear the belly's answer.
+
+FIRST CITIZEN:
+Ye're long about it.
+
+MENENIUS:
+Note me this, good friend; Your most grave belly was deliberate, Not rash like his accusers, and thus answer'd: 'True is it, my incorporate friends,' quoth he, 'That I receive the general food at first, Which you do live upon; and fit it is, Because I am the store-house and the shop Of the whole body: but, if you do remember, I send it through the rivers of your blood, Even to the court, the heart, to the seat o' the brain; And, through the cranks and offices of man, The strongest nerves and small inferior veins From me receive that natural competency Whereby they live: and though that all at once, You, my good friends,'--this says the belly, mark me,--
+
+FIRST CITIZEN:
+Ay, sir; well, well.
+
+MENENIUS:
+'Though all at once cannot See what I do deliver out to each, Yet I can make my audit up, that all From me do back receive the flour of all, And leave me but the bran.' What say you to't?
+
+FIRST CITIZEN:
+It was an answer: how apply you this?
+
+MENENIUS:
+The senators of Rome are this good belly, And you the mutinous members; for examine Their counsels and their cares, digest things rightly Touching the weal o' the common, you shall find No public benefit which you receive But it proceeds or comes from them to you And no way from yourselves. What do you think, You, the great toe of this assembly?
+
+FIRST CITIZEN:
+I the great toe! why the great toe?
+
+MENENIUS:
+For that, being one o' the lowest, basest, poorest, Of this most wise rebellion, thou go'st foremost: Thou rascal, that art worst in blood to run, Lead'st first to win some vantage. But make you ready your stiff bats and clubs: Rome and her rats are at the point of battle; The one side must have bale. Hail, noble Marcius!
+
+MARCIUS:
+Thanks. What's the matter, you dissentious rogues, That, rubbing the poor itch of your opinion, Make yourselves scabs?
+
+FIRST CITIZEN:
+We have ever your good word.
+
+MARCIUS:
+He that will give good words to thee will flatter Beneath abhorring. What would you have, you curs, That like nor peace nor war? the one affrights you, The other makes you proud. He that trusts to you, Where he should find you lions, finds you hares; Where foxes, geese: you are no surer, no, Than is the coal of fire upon the ice, Or hailstone in the sun. Your virtue is To make him worthy whose offence subdues him And curse that justice did it. Who deserves greatness Deserves your hate; and your affections are A sick man's appetite, who desires most that Which would increase his evil. He that depends Upon your favours swims with fins of lead And hews down oaks with rushes. Hang ye! Trust ye? With every minute you do change a mind, And call him noble that was now your hate, Him vile that was your garland. What's the matter, That in these several places of the city You cry against the noble senate, who, Under the gods, keep you in awe, which else Would feed on one another? What's their seeking?
+
+MENENIUS:
+For corn at their own rates; whereof, they say, The city is well stored.
+
+MARCIUS:
+Hang 'em! They say! They'll sit by the fire, and presume to know What's done i' the Capitol; who's like to rise, Who thrives and who declines; side factions and give out Conjectural marriages; making parties strong And feebling such as stand not in their liking Below their cobbled shoes. They say there's grain enough! Would the nobility lay aside their ruth, And let me use my sword, I'll make a quarry With thousands of these quarter'd slaves, as high As I could pick my lance.
+
+MENENIUS:
+Nay, these are almost thoroughly persuaded; For though abundantly they lack discretion, Yet are they passing cowardly. But, I beseech you, What says the other troop?
+
+MARCIUS:
+They are dissolved: hang 'em! They said they were an-hungry; sigh'd forth proverbs, That hunger broke stone walls, that dogs must eat, That meat was made for mouths, that the gods sent not Corn for the rich men only: with these shreds They vented their complainings; which being answer'd, And a petition granted them, a strange one-- To break the heart of generosity, And make bold power look pale--they threw their caps As they would hang them on the horns o' the moon, Shouting their emulation.
+
+MENENIUS:
+What is granted them?
+
+MARCIUS:
+Five tribunes to defend their vulgar wisdoms, Of their own choice: one's Junius Brutus, Sicinius Velutus, and I know not--'Sdeath! The rabble should have first unroof'd the city, Ere so prevail'd with me: it will in time Win upon power and throw forth greater themes For insurrection's arguing.
+
+MENENIUS:
+This is strange.
+
+MARCIUS:
+Go, get you home, you fragments!
+
+MESSENGER:
+Where's Caius Marcius?
+
+MARCIUS:
+Here: what's the matter?
+
+MESSENGER:
+The news is, sir, the Volsces are in arms.
+
+MARCIUS:
+I am glad on 't: then we shall ha' means to vent Our musty superfluity. See, our best elders.
+
+FIRST SENATOR:
+Marcius, 'tis true that you have lately told us; The Volsces are in arms.
+
+MARCIUS:
+They have a leader, Tullus Aufidius, that will put you to 't. I sin in envying his nobility, And were I any thing but what I am, I would wish me only he.
+
+COMINIUS:
+You have fought together.
+
+MARCIUS:
+Were half to half the world by the ears and he Upon my party, I'ld revolt to make Only my wars with him: he is a lion That I am proud to hunt.
+
+FIRST SENATOR:
+Then, worthy Marcius, Attend upon Cominius to these wars.
+
+COMINIUS:
+It is your former promise.
+
+MARCIUS:
+Sir, it is; And I am constant. Titus Lartius, thou Shalt see me once more strike at Tullus' face. What, art thou stiff? stand'st out?
+
+TITUS:
+No, Caius Marcius; I'll lean upon one crutch and fight with t'other, Ere stay behind this business.
+
+MENENIUS:
+O, true-bred!
+
+FIRST SENATOR:
+Your company to the Capitol; where, I know, Our greatest friends attend us.
+
+TITUS:
+Lead you on. Follow Cominius; we must follow you; Right worthy you priority.
+
+COMINIUS:
+Noble Marcius!
+
+FIRST SENATOR:
+Hence to your homes; be gone!
+
+MARCIUS:
+Nay, let them follow: The Volsces have much corn; take these rats thither To gnaw their garners. Worshipful mutiners, Your valour puts well forth: pray, follow.
+
+SICINIUS:
+Was ever man so proud as is this Marcius?
+
+BRUTUS:
+He has no equal.
+
+SICINIUS:
+When we were chosen tribunes for the people,--
+
+BRUTUS:
+Mark'd you his lip and eyes?
+
+SICINIUS:
+Nay, but his taunts.
+
+BRUTUS:
+Being moved, he will not spare to gird the gods.
+
+SICINIUS:
+Be-mock the modest moon.
+
+BRUTUS:
+The present wars devour him: he is grown Too proud to be so valiant.
+
+SICINIUS:
+Such a nature, Tickled with good success, disdains the shadow Which he treads on at noon: but I do wonder His insolence can brook to be commanded Under Cominius.
+
+BRUTUS:
+Fame, at the which he aims, In whom already he's well graced, can not Better be held nor more attain'd than by A place below the first: for what miscarries Shall be the general's fault, though he perform To the utmost of a man, and giddy censure Will then cry out of Marcius 'O if he Had borne the business!'
+
+SICINIUS:
+Besides, if things go well, Opinion that so sticks on Marcius shall Of his demerits rob Cominius.
+
+BRUTUS:
+Come: Half all Cominius' honours are to Marcius, Though Marcius earn'd them not, and all his faults To Marcius shall be honours, though indeed In aught he merit not.
+
+SICINIUS:
+Let's hence, and hear How the dispatch is made, and in what fashion, More than his singularity, he goes Upon this present action.
+
+BRUTUS:
+Let's along.
+
+VOLUMNIA:
+I pray you, daughter, sing; or express yourself in a more comfortable sort: if my son were my husband, I should freelier rejoice in that absence wherein he won honour than in the embracements of his bed where he would show most love. When yet he was but tender-bodied and the only son of my womb, when youth with comeliness plucked all gaze his way, when for a day of kings' entreaties a mother should not sell him an hour from her beholding, I, considering how honour would become such a person, that it was no better than picture-like to hang by the wall, if renown made it not stir, was pleased to let him seek danger where he was like to find fame. To a cruel war I sent him; from whence he returned, his brows bound with oak. I tell thee, daughter, I sprang not more in joy at first hearing he was a man-child than now in first seeing he had proved himself a man.
+
+VIRGILIA:
+But had he died in the business, madam; how then?
+
+VOLUMNIA:
+Then his good report should have been my son; I therein would have found issue. Hear me profess sincerely: had I a dozen sons, each in my love alike and none less dear than thine and my good Marcius, I had rather had eleven die nobly for their country than one voluptuously surfeit out of action.
+
+GENTLEWOMAN:
+Madam, the Lady Valeria is come to visit you.
+
+VIRGILIA:
+Beseech you, give me leave to retire myself.
+
+VOLUMNIA:
+Indeed, you shall not. Methinks I hear hither your husband's drum, See him pluck Aufidius down by the hair, As children from a bear, the Volsces shunning him: Methinks I see him stamp thus, and call thus: 'Come on, you cowards! you were got in fear, Though you were born in Rome:' his bloody brow With his mail'd hand then wiping, forth he goes, Like to a harvest-man that's task'd to mow Or all or lose his hire.
+
+VIRGILIA:
+His bloody brow! O Jupiter, no blood!
+
+VOLUMNIA:
+Away, you fool! it more becomes a man Than gilt his trophy: the breasts of Hecuba, When she did suckle Hector, look'd not lovelier Than Hector's forehead when it spit forth blood At Grecian sword, contemning. Tell Valeria, We are fit to bid her welcome.
+
+VIRGILIA:
+Heavens bless my lord from fell Aufidius!
+
+VOLUMNIA:
+He'll beat Aufidius' head below his knee And tread upon his neck.`
+  },
+  {
+    id: 'math-logic',
+    name: 'Synthetic Math & Logic',
+    category: 'logic',
+    description: 'Arithmetic expressions and logical rule chains for checking reasoning capabilities.',
+    text: `1 + 1 = 2
+1 + 2 = 3
+2 + 2 = 4
+2 + 3 = 5
+3 + 3 = 6
+3 + 4 = 7
+4 + 4 = 8
+5 + 5 = 10
+If A then B. A is true. Therefore B.
+If B then C. B is true. Therefore C.
+If C then D. C is true. Therefore D.
+Cat is an animal. Animal has four legs. Cat has four legs.
+Dog is an animal. Animal has four legs. Dog has four legs.`
+  },
+  {
+    id: 'code-python',
+    name: 'Python Micro Snippets',
+    category: 'code',
+    description: 'Python code functions, assignments, and loops to test structural token learning.',
+    text: `def add(a, b):
+    return a + b
+
+def multiply(a, b):
+    return a * b
+
+for i in range(5):
+    print(i)
+
+x = 10
+if x > 5:
+    print("Greater")
+else:
+    print("Smaller")`
+  },
+  {
+    id: 'qa-dialogue',
+    name: 'Simple Q&A Conversations',
+    category: 'synthetic',
+    description: 'Question and answer dialog turns for early instruction alignment visualization.',
+    text: `User: Hello!
+Assistant: Hi there! How can I help you today?
+
+User: What is an LLM?
+Assistant: An LLM is a Large Language Model trained to predict tokens.
+
+User: What is attention?
+Assistant: Attention allows models to dynamically focus on relevant tokens.`
+  }
+];
+
+/** Fraction of each dataset (by characters, snapped to a line break) held out from training. */
+export const VALIDATION_FRACTION = 0.15;
+
+export interface DatasetSplit {
+  trainText: string;
+  valText: string;
+}
+
+/**
+ * Split a dataset into a training portion and a held-out validation tail.
+ * The model never trains on valText, so loss on it measures generalization
+ * rather than memorization.
+ */
+export function splitDataset(text: string, valFraction: number = VALIDATION_FRACTION): DatasetSplit {
+  const target = Math.floor(text.length * (1 - valFraction));
+  // Prefer a paragraph break (keeps Q&A turns / code blocks intact), then a line break
+  const minCut = Math.floor(text.length * (1 - 3 * valFraction));
+  let cut = text.lastIndexOf('\n\n', target);
+  if (cut < minCut) cut = text.lastIndexOf('\n', target);
+  if (cut <= 0) cut = target; // no line break before the mark — cut mid-line
+  return {
+    trainText: text.slice(0, cut),
+    valText: text.slice(cut).replace(/^\n+/, ''),
+  };
+}
