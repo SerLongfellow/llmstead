@@ -4,15 +4,14 @@ import { MicroTransformer } from './engine/transformer';
 import { BPETokenizer } from './engine/bpeTokenizer';
 import { SAMPLE_DATASETS } from './engine/datasets';
 import { Navbar } from './components/Navbar';
-import { ParameterTuner } from './components/ParameterTuner';
-import { TokenizerVisualizer } from './components/TokenizerVisualizer';
-import { DatasetExplorer } from './components/DatasetExplorer';
-import { ForwardPassInspector } from './components/ForwardPassInspector';
-import { AttentionHeatmap } from './components/AttentionHeatmap';
+import { SetupView } from './components/SetupView';
 import { TrainingDashboard } from './components/TrainingDashboard';
+import { PipelineView } from './components/PipelineView';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('tuner');
+  const [activeTab, setActiveTab] = useState<string>('setup');
+  // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches)
+  const [datasets, setDatasets] = useState<DatasetOption[]>(SAMPLE_DATASETS);
   const [selectedDataset, setSelectedDataset] = useState<DatasetOption>(SAMPLE_DATASETS[0]);
   
   // Transformer Hyperparameters
@@ -27,18 +26,16 @@ export default function App() {
     optimizer: 'adamw'
   });
 
-  // Which text the tokenizer is trained on. Defaults to the selected dataset; the BPE tab
-  // can override it with a custom corpus. config.vocabSize is the *target* vocab size.
-  const [tokenizerCorpus, setTokenizerCorpus] = useState<string>(SAMPLE_DATASETS[0].text);
-
-  // BPE Tokenizer Engine instance — rebuilt (never mutated) when its inputs change
+  // BPE Tokenizer Engine instance, trained on the selected dataset. config.vocabSize is the
+  // *target* vocab size (set in Setup). Rebuilt (never mutated) when either changes, and
+  // since the model's embedding table depends on the vocabulary, that also means a new model.
   const tokenizer = useMemo(() => {
     const t = new BPETokenizer();
-    t.train(tokenizerCorpus, config.vocabSize);
+    t.train(selectedDataset.text, config.vocabSize);
     return t;
-  }, [tokenizerCorpus, config.vocabSize]);
+  }, [selectedDataset, config.vocabSize]);
 
-  const tokenizerState = useMemo(() => tokenizer.getState(tokenizerCorpus), [tokenizer, tokenizerCorpus]);
+  const tokenizerState = useMemo(() => tokenizer.getState(selectedDataset.text), [tokenizer, selectedDataset]);
 
   // BPE can stop early (no pair repeats), so the real vocab may be smaller than the target
   const actualVocab = tokenizer.getVocabSize();
@@ -82,14 +79,12 @@ export default function App() {
 
   const handleSelectDataset = (ds: DatasetOption) => {
     setSelectedDataset(ds);
-    setTokenizerCorpus(ds.text);
     setTestSentence(ds.text.slice(0, 30));
   };
 
-  // Retrain tokenizer on a custom corpus: update state and let the memo rebuild it
-  const handleRetrainTokenizer = (corpus: string, targetVocabSize: number) => {
-    setTokenizerCorpus(corpus);
-    setConfig(prev => ({ ...prev, vocabSize: targetVocabSize }));
+  const handleAddDataset = (ds: DatasetOption) => {
+    setDatasets(prev => [...prev, ds]);
+    handleSelectDataset(ds);
   };
 
   const paramCount = model.getParameterCount();
@@ -104,50 +99,31 @@ export default function App() {
       />
 
       <main style={{ minHeight: '80vh' }}>
-        {activeTab === 'tuner' && (
-          <ParameterTuner
+        {activeTab === 'setup' && (
+          <SetupView
+            datasets={datasets}
+            selectedDataset={selectedDataset}
+            onSelectDataset={handleSelectDataset}
+            onAddDataset={handleAddDataset}
+            tokenizer={tokenizer}
+            targetVocabSize={config.vocabSize}
+            onChangeVocabSize={(vocabSize) => setConfig(prev => ({ ...prev, vocabSize }))}
             config={effectiveConfig}
-            // Tuner sees the effective vocab; keep the tokenizer's target vocab untouched
+            // Setup sees the effective vocab; the target vocab only changes via its own slider
             onChangeConfig={(next) => setConfig({ ...next, vocabSize: config.vocabSize })}
             paramCount={paramCount}
           />
         )}
 
-        {activeTab === 'bpe' && (
-          <TokenizerVisualizer
-            tokenizer={tokenizer}
-            tokenizerState={tokenizerState}
-            targetVocabSize={config.vocabSize}
-            isCustomCorpus={tokenizerCorpus !== selectedDataset.text}
-            onResetToDataset={() => setTokenizerCorpus(selectedDataset.text)}
-            onRetrainTokenizer={handleRetrainTokenizer}
-          />
-        )}
-
-        {activeTab === 'datasets' && (
-          <DatasetExplorer
-            selectedDataset={selectedDataset}
-            onSelectDataset={handleSelectDataset}
-            tokenizer={tokenizer}
-            config={effectiveConfig}
-            onNavigateToTraining={() => setActiveTab('training')}
-          />
-        )}
-
-        {activeTab === 'inspector' && (
-          <ForwardPassInspector
+        {activeTab === 'pipeline' && (
+          <PipelineView
             inspectionData={inspectionData}
             config={effectiveConfig}
+            tokenizer={tokenizer}
             testInput={testSentence}
             setTestInput={setTestSentence}
             onRunInspect={runInspection}
-          />
-        )}
-
-        {activeTab === 'attention' && (
-          <AttentionHeatmap
-            inspectionData={inspectionData}
-            config={effectiveConfig}
+            tokenizerState={tokenizerState}
           />
         )}
 
@@ -157,8 +133,7 @@ export default function App() {
             tokenizer={tokenizer}
             config={effectiveConfig}
             selectedDataset={selectedDataset}
-            onSelectDataset={handleSelectDataset}
-            onUpdateInspection={setInspectionData}
+            onNavigateToSetup={() => setActiveTab('setup')}
           />
         )}
       </main>

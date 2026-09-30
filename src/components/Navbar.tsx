@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cpu, Binary, Layers, Grid, Activity, Sparkles, BookOpen } from 'lucide-react';
+import { Cpu, Activity, Sparkles, Workflow } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: string;
@@ -15,11 +15,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   datasetName,
 }) => {
   const tabs = [
-    { id: 'tuner', label: 'Architecture Tuner', icon: Cpu },
-    { id: 'bpe', label: 'BPE Tokenizer', icon: Binary },
-    { id: 'datasets', label: 'Dataset Explorer', icon: BookOpen },
-    { id: 'inspector', label: 'Step Inspector', icon: Layers },
-    { id: 'attention', label: 'Attention Heatmaps', icon: Grid },
+    { id: 'setup', label: 'Setup', icon: Cpu },
+    { id: 'pipeline', label: 'Pipeline', icon: Workflow },
     { id: 'training', label: 'Training Dashboard', icon: Activity },
   ];
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { DatasetOption, StepInspectionData, TransformerConfig } from '../types';
+import { DatasetOption, TransformerConfig } from '../types';
 import { MicroTransformer } from '../engine/transformer';
 import { BPETokenizer } from '../engine/bpeTokenizer';
-import { SAMPLE_DATASETS, splitDataset, VALIDATION_FRACTION } from '../engine/datasets';
+import { splitDataset, VALIDATION_FRACTION } from '../engine/datasets';
 import { generateContinuation } from '../engine/generate';
 import { Play, Pause, RotateCcw, FastForward, Activity, Sparkles, BookOpen } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
@@ -27,8 +27,8 @@ const MAX_VAL_WINDOWS = 32;
 
 /**
  * While training runs, each tick does as many steps as fit in this many milliseconds, then
- * yields so the page can repaint. The chart, Step Inspector and validation update once per
- * tick, not once per step, so almost all of the time goes to actual training.
+ * yields so the page can repaint. The chart and validation update once per tick, not once
+ * per step, so almost all of the time goes to actual training.
  */
 const TICK_BUDGET_MS = 100;
 const TICK_GAP_MS = 16;
@@ -38,8 +38,7 @@ interface TrainingDashboardProps {
   tokenizer: BPETokenizer;
   config: TransformerConfig;
   selectedDataset: DatasetOption;
-  onSelectDataset: (dataset: DatasetOption) => void;
-  onUpdateInspection: (data: StepInspectionData) => void;
+  onNavigateToSetup: () => void;
 }
 
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
@@ -47,8 +46,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   tokenizer,
   config,
   selectedDataset,
-  onSelectDataset,
-  onUpdateInspection,
+  onNavigateToSetup,
 }) => {
   const [isTraining, setIsTraining] = useState<boolean>(false);
   const [stepCount, setStepCount] = useState<number>(0);
@@ -66,13 +64,11 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   const split = useMemo(() => splitDataset(selectedDataset.text), [selectedDataset]);
   const trainTokens = useMemo(() => tokenizer.encode(split.trainText).tokens, [tokenizer, split]);
   const valTokens = useMemo(() => tokenizer.encode(split.valText).tokens, [tokenizer, split]);
-  // What the Step Inspector shows after each tick (the forward pass only reads the first contextWindow tokens)
-  const inspectionInput = useMemo(() => tokenizer.encode(selectedDataset.text), [tokenizer, selectedDataset]);
 
   // Refs so the timer callback always sees the latest values (no stale closures)
   const stepRef = useRef<number>(0);
-  const latest = useRef({ model, config, trainTokens, valTokens, inspectionInput, onUpdateInspection });
-  latest.current = { model, config, trainTokens, valTokens, inspectionInput, onUpdateInspection };
+  const latest = useRef({ model, config, trainTokens, valTokens });
+  latest.current = { model, config, trainTokens, valTokens };
 
   const resetHistory = () => {
     stepRef.current = 0;
@@ -114,10 +110,10 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
 
   /**
    * Run training steps until `maxSteps` are done or `budgetMs` has elapsed, then record
-   * ONE chart point (the mean loss over those steps) and refresh the Step Inspector.
+   * ONE chart point (the mean loss over those steps).
    */
   const runTrainingSteps = (maxSteps: number, budgetMs: number) => {
-    const { model, config, trainTokens, inspectionInput, onUpdateInspection } = latest.current;
+    const { model, config, trainTokens } = latest.current;
     if (trainTokens.length < 2) return;
 
     const startStep = stepRef.current;
@@ -147,9 +143,6 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     setStepLabels(l => [...l, `#${nextStep}`]);
     setLossHistory(h => [...h, Number((lossSum / steps).toFixed(4))]);
     setValLossHistory(h => [...h, valLoss === null ? null : Number(valLoss.toFixed(4))]);
-
-    // Update inspection data for step visualizer
-    onUpdateInspection(model.inspectForwardPass(inspectionInput.tokens, inspectionInput.tokenStrings));
   };
 
   // "Step" button: exactly one training step
@@ -231,52 +224,22 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px' }}>
-      {/* Left Column: Dataset Selector & Loss Chart */}
+      {/* Left Column: Dataset & Loss Chart */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {/* Dataset Selection Bar */}
-        <div className="glass-panel" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+        {/* What's being trained on (chosen in Setup, since changing it resets the model) */}
+        <div className="glass-panel" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BookOpen size={20} color="var(--accent-purple)" />
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Dataset Selection</h2>
-            <InfoTooltip
-              title="Training Datasets"
-              description="Choose between different text domains (Shakespeare, Logic/Math, Code, Q&A dialogues) to observe how data domain impacts learning rate and output style."
-              impact="Re-trains BPE tokenizer and resets target text sequences for training loops."
-            />
+            <div>
+              <p style={{ fontSize: '0.95rem', fontWeight: 700 }}>Training on: {selectedDataset.name}</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                First {trainTokens.length} tokens for training · last {valTokens.length} held out for validation
+              </p>
+            </div>
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-            {SAMPLE_DATASETS.map((ds) => {
-              const isSelected = selectedDataset.id === ds.id;
-              return (
-                <button
-                  key={ds.id}
-                  onClick={() => onSelectDataset(ds)}
-                  style={{
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: '1px solid ' + (isSelected ? 'var(--primary)' : 'var(--border-color)'),
-                    background: isSelected ? 'rgba(99, 102, 241, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                    color: isSelected ? '#ffffff' : 'var(--text-muted)',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <p style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? '#ffffff' : 'var(--text-main)' }}>
-                    {ds.name}
-                  </p>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px' }}>
-                    {ds.category}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '12px' }}>
-            Training on the first {trainTokens.length} tokens · last {valTokens.length} tokens held out for validation
-          </p>
+          <button className="btn-secondary" onClick={onNavigateToSetup} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+            Change in Setup
+          </button>
         </div>
 
         {/* Training Loss Chart */}
