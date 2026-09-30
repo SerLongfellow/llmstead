@@ -27,7 +27,7 @@ Local React + Vite + TypeScript site for learning how LLMs work: train a tiny tr
 
 ## Other notes / ideas
 - Shakespeare dataset is Coriolanus 1.1 + 1.3 (~15k chars, typed from memory, verse lines joined per speech); its validation split starts at scene 3.
-- The tiny datasets (code-python 38 train tokens, qa-dialogue 87) can only demonstrate overfitting.
+- The other datasets are ~1.3–2.1k training tokens each (at vocab 120). math-logic is generated in `buildMathLogicText()` (seeded shuffle); each non-Shakespeare dataset keeps its original lines first (so benchmark "seen" cases stay in the train split) and deliberately omits the benchmark's held-out strings. Keep it that way when editing datasets or benchmarks.
 - Training Dashboard state (loss history) resets on tab switch because tabs are conditionally rendered.
 - "Reset" on the training chart clears history only; weights re-init when the architecture, tokenizer or dataset changes.
 - Future direction discussed: keep this in-browser toy engine for mechanics, and add a separate real-model tier (Python + PyTorch/Hugging Face backend, or transformers.js/WebGPU) for importing base models, LoRA/DPO fine-tuning, and benchmarking. Reuse the same visualizations across both.

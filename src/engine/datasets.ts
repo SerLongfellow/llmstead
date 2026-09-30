@@ -1,5 +1,83 @@
 import { DatasetOption } from '../types';
 
+/** Small seeded PRNG (mulberry32) so generated datasets are identical on every load */
+function seededRandom(seed: number): () => number {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle<T>(items: T[], rand: () => number): T[] {
+  const a = items.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/**
+ * The math & logic dataset, generated rather than typed out. The original hand-written lines
+ * come first (so the benchmark's "seen" cases stay in the training split); the rest are shuffled
+ * with a fixed seed. Lines matching the benchmark's held-out cases are deliberately left out,
+ * so those cases can only pass by generalizing: 2 + 1, 4 + 3 and 1 + 3 (commutativity),
+ * the D → E rule chain, and cows.
+ */
+function buildMathLogicText(): string {
+  const intro = [
+    '1 + 1 = 2', '1 + 2 = 3', '2 + 2 = 4', '2 + 3 = 5', '3 + 3 = 6', '3 + 4 = 7', '4 + 4 = 8', '5 + 5 = 10',
+    'If A then B. A is true. Therefore B.',
+    'If B then C. B is true. Therefore C.',
+    'If C then D. C is true. Therefore D.',
+    'Cat is an animal. Animal has four legs. Cat has four legs.',
+    'Dog is an animal. Animal has four legs. Dog has four legs.',
+  ];
+  const excluded = new Set([...intro, '2 + 1 = 3', '4 + 3 = 7', '1 + 3 = 4']);
+
+  const sums: string[] = [];
+  for (let a = 0; a <= 9; a++) {
+    for (let b = 0; b <= 9; b++) {
+      const line = `${a} + ${b} = ${a + b}`;
+      if (!excluded.has(line)) sums.push(line);
+    }
+  }
+
+  const comparisons: string[] = [];
+  for (let a = 0; a <= 9; a++) {
+    for (let b = 0; b <= 9; b++) {
+      if (a > b && (a + b) % 3 === 0) comparisons.push(`${a} is greater than ${b}.`);
+      if (a < b && (a + b) % 3 === 1) comparisons.push(`${a} is less than ${b}.`);
+    }
+  }
+
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const rules: string[] = [];
+  for (let i = 0; i < letters.length - 1; i++) {
+    const [p, q] = [letters[i], letters[i + 1]];
+    const line = `If ${p} then ${q}. ${p} is true. Therefore ${q}.`;
+    if (p !== 'D' && !excluded.has(line)) rules.push(line); // D → E is held out
+  }
+  for (let i = 0; i < letters.length - 3; i += 2) {
+    const [p, q] = [letters[i], letters[i + 3]];
+    if (p !== 'D') rules.push(`If ${p} then ${q}. ${p} is true. Therefore ${q}.`);
+  }
+
+  const legged = ['Horse', 'Lion', 'Tiger', 'Sheep', 'Goat', 'Pig', 'Bear', 'Wolf', 'Fox', 'Rabbit', 'Mouse', 'Deer', 'Zebra', 'Camel'];
+  const birds = ['Robin', 'Eagle', 'Owl', 'Duck', 'Crow', 'Parrot', 'Swan', 'Hawk'];
+  const fish = ['Salmon', 'Trout', 'Shark', 'Tuna', 'Cod'];
+  const facts = [
+    ...legged.map(x => `${x} is an animal. Animal has four legs. ${x} has four legs.`),
+    ...birds.map(x => `${x} is a bird. Bird has wings. ${x} has wings.`),
+    ...fish.map(x => `${x} is a fish. Fish has fins. ${x} has fins.`),
+  ];
+
+  const rand = seededRandom(42);
+  return [...intro, ...shuffle([...sums, ...comparisons, ...rules, ...facts], rand)].join('\n');
+}
+
 export const SAMPLE_DATASETS: DatasetOption[] = [
   {
     id: 'shakespeare',
@@ -304,26 +382,14 @@ He'll beat Aufidius' head below his knee And tread upon his neck.`
     id: 'math-logic',
     name: 'Synthetic Math & Logic',
     category: 'logic',
-    description: 'Arithmetic expressions and logical rule chains for checking reasoning capabilities.',
-    text: `1 + 1 = 2
-1 + 2 = 3
-2 + 2 = 4
-2 + 3 = 5
-3 + 3 = 6
-3 + 4 = 7
-4 + 4 = 8
-5 + 5 = 10
-If A then B. A is true. Therefore B.
-If B then C. B is true. Therefore C.
-If C then D. C is true. Therefore D.
-Cat is an animal. Animal has four legs. Cat has four legs.
-Dog is an animal. Animal has four legs. Dog has four legs.`
+    description: 'Single-digit sums, if-then rule chains and category facts, generated so a few benchmark cases never appear.',
+    text: buildMathLogicText(),
   },
   {
     id: 'code-python',
     name: 'Python Micro Snippets',
     category: 'code',
-    description: 'Python code functions, assignments, and loops to test structural token learning.',
+    description: 'Short Python functions, loops, conditionals and classes for learning code structure.',
     text: `def add(a, b):
     return a + b
 
@@ -337,13 +403,204 @@ x = 10
 if x > 5:
     print("Greater")
 else:
-    print("Smaller")`
+    print("Smaller")
+
+def divide(a, b):
+    return a / b
+
+def power(a, b):
+    return a ** b
+
+def maximum(a, b):
+    if a > b:
+        return a
+    return b
+
+def minimum(a, b):
+    if a < b:
+        return a
+    return b
+
+def average(a, b):
+    return (a + b) / 2
+
+def mod(a, b):
+    return a % b
+
+def concat(a, b):
+    return a + b
+
+def square(x):
+    return x * x
+
+def cube(x):
+    return x * x * x
+
+def double(x):
+    return x * 2
+
+def half(x):
+    return x / 2
+
+def negate(x):
+    return -x
+
+def is_even(n):
+    return n % 2 == 0
+
+def greet(name):
+    print("Hello, " + name)
+
+for i in range(10):
+    print(i * 2)
+
+for i in range(3):
+    print("Hello")
+
+for k in range(4):
+    print(k)
+
+for i in range(2, 8):
+    print(i)
+
+for i in range(6):
+    if i % 2 == 0:
+        print(i)
+
+total = 0
+for i in range(5):
+    total = total + i
+print(total)
+
+n = 7
+if n > 3:
+    print("Big")
+else:
+    print("Small")
+
+temperature = 30
+if temperature > 25:
+    print("Hot")
+else:
+    print("Cold")
+
+age = 18
+if age > 17:
+    print("Adult")
+else:
+    print("Minor")
+
+z = 0
+if z > 0:
+    print("Positive")
+elif z < 0:
+    print("Negative")
+else:
+    print("Zero")
+
+a = 3
+b = 4
+if a > b:
+    print("a is bigger")
+else:
+    print("b is bigger")
+
+count = 0
+while count < 5:
+    print(count)
+    count = count + 1
+
+names = ["Ann", "Bob", "Cat"]
+for name in names:
+    print(name)
+
+numbers = [1, 2, 3, 4, 5]
+for n in numbers:
+    if n % 2 == 0:
+        print("even")
+    else:
+        print("odd")
+
+scores = {"Ann": 90, "Bob": 85}
+for key in scores:
+    print(key, scores[key])
+
+word = "hello"
+for letter in word:
+    print(letter)
+
+def sum_list(items):
+    total = 0
+    for item in items:
+        total = total + item
+    return total
+
+def count_words(text):
+    return len(text.split())
+
+def factorial(n):
+    if n == 0:
+        return 1
+    return n * factorial(n - 1)
+
+def fib(n):
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+def clamp(x, low, high):
+    if x < low:
+        return low
+    if x > high:
+        return high
+    return x
+
+result = add(2, 3)
+print(result)
+
+value = multiply(4, 5)
+print(value)
+
+class Counter:
+    def __init__(self):
+        self.value = 0
+
+    def increment(self):
+        self.value = self.value + 1
+
+    def get(self):
+        return self.value
+
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def add(self, other):
+        return Point(self.x + other.x, self.y + other.y)
+
+for i in range(100):
+    if i > 3:
+        break
+    print(i)
+
+def first(items):
+    return items[0]
+
+def last(items):
+    return items[-1]
+
+m = 12
+if m > 10:
+    print("Double digits")
+else:
+    print("Single digit")`
   },
   {
     id: 'qa-dialogue',
     name: 'Simple Q&A Conversations',
     category: 'synthetic',
-    description: 'Question and answer dialog turns for early instruction alignment visualization.',
+    description: 'User/Assistant turns: greetings plus short definitions of ML terms.',
     text: `User: Hello!
 Assistant: Hi there! How can I help you today?
 
@@ -351,7 +608,109 @@ User: What is an LLM?
 Assistant: An LLM is a Large Language Model trained to predict tokens.
 
 User: What is attention?
-Assistant: Attention allows models to dynamically focus on relevant tokens.`
+Assistant: Attention allows models to dynamically focus on relevant tokens.
+
+User: Hey!
+Assistant: Hi! What would you like to know?
+
+User: Good morning!
+Assistant: Hi! I hope your day is going well.
+
+User: What is a tokenizer?
+Assistant: A tokenizer splits text into tokens the model can read.
+
+User: What is a transformer?
+Assistant: A transformer is a neural network built from attention and MLP layers.
+
+User: What is an embedding?
+Assistant: An embedding is a list of numbers that represents a token.
+
+User: What is a neural network?
+Assistant: A neural network is a stack of layers that learns patterns from data.
+
+User: What is training?
+Assistant: Training adjusts the model's weights so its predictions get better.
+
+User: What is a loss?
+Assistant: A loss is a number that measures how wrong the model's predictions are.
+
+User: What is a gradient?
+Assistant: A gradient tells each weight which direction lowers the loss.
+
+User: What is backpropagation?
+Assistant: Backpropagation computes the gradient of the loss for every weight.
+
+User: What is a weight?
+Assistant: A weight is a number inside the model that is learned during training.
+
+User: What is a vocabulary?
+Assistant: A vocabulary is the fixed set of tokens a model knows.
+
+User: What is softmax?
+Assistant: Softmax turns a list of scores into probabilities that add up to one.
+
+User: What is a context window?
+Assistant: A context window is the number of tokens the model can see at once.
+
+User: What is an MLP?
+Assistant: An MLP is a small feed-forward network inside each transformer block.
+
+User: What is a layer?
+Assistant: A layer is one step of computation inside a neural network.
+
+User: Thanks!
+Assistant: You're welcome! Happy to help.
+
+User: What is overfitting?
+Assistant: Overfitting is when a model memorizes its training data instead of learning general patterns.
+
+User: What is a benchmark?
+Assistant: A benchmark is a set of tests used to measure a model.
+
+User: What is a prompt?
+Assistant: A prompt is the text you give a model to continue.
+
+User: What is temperature?
+Assistant: Temperature controls how random the model's choices are.
+
+User: What is an optimizer?
+Assistant: An optimizer uses gradients to update the model's weights.
+
+User: What is a head?
+Assistant: A head is one of several parallel attention units in a layer.
+
+User: Hello again!
+Assistant: Hi! What else can I help with?
+
+User: What is a parameter?
+Assistant: A parameter is another name for a learned weight.
+
+User: What is fine-tuning?
+Assistant: Fine-tuning continues training a model on a smaller, specific dataset.
+
+User: What is a dataset?
+Assistant: A dataset is the collection of text a model learns from.
+
+User: Can you explain attention?
+Assistant: Attention lets each token look back at earlier tokens and gather the useful ones.
+
+User: How does a model generate text?
+Assistant: It predicts one token, adds it to the input, and repeats.
+
+User: Why do models use tokens?
+Assistant: Tokens turn text into numbers the model can compute with.
+
+User: Thank you!
+Assistant: You're welcome!
+
+User: What is an epoch?
+Assistant: An epoch is one full pass over the training data.
+
+User: What is a logit?
+Assistant: A logit is a raw score for a token before softmax.
+
+User: Goodbye!
+Assistant: Goodbye! Have a great day.`
   }
 ];
 
