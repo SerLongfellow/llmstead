@@ -40,6 +40,7 @@ interface TrainingDashboardProps {
   config: TransformerConfig;
   selectedDataset: DatasetOption;
   onNavigateToSetup: () => void;
+  onTrainingChange?: (isTraining: boolean) => void;
 }
 
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
@@ -48,8 +49,13 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   config,
   selectedDataset,
   onNavigateToSetup,
+  onTrainingChange,
 }) => {
   const [isTraining, setIsTraining] = useState<boolean>(false);
+  useEffect(() => {
+    onTrainingChange?.(isTraining);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTraining]);
   const [stepCount, setStepCount] = useState<number>(0);
   const [lossHistory, setLossHistory] = useState<number[]>([]);
   const [valLossHistory, setValLossHistory] = useState<(number | null)[]>([]);

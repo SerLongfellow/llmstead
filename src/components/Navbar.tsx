@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cpu, Activity, Workflow } from 'lucide-react';
+import { Home } from 'lucide-react';
 import { ChickenLogo } from './ChickenLogo';
 
 interface NavbarProps {
@@ -7,19 +7,25 @@ interface NavbarProps {
   setActiveTab: (tab: string) => void;
   paramCount: number;
   datasetName: string;
+  isTraining: boolean;
 }
+
+/** The app's path, in order. Start is the intro; the rest are numbered steps. */
+export const TABS = [
+  { id: 'start', label: 'Start here', step: null },
+  { id: 'setup', label: 'Set up', step: 1 },
+  { id: 'training', label: 'Train', step: 2 },
+  { id: 'pipeline', label: 'Look inside', step: 3 },
+] as const;
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   paramCount,
   datasetName,
+  isTraining,
 }) => {
-  const tabs = [
-    { id: 'setup', label: 'Setup', icon: Cpu },
-    { id: 'pipeline', label: 'Pipeline', icon: Workflow },
-    { id: 'training', label: 'Training Dashboard', icon: Activity },
-  ];
+  const tabs = TABS;
 
   return (
     <header className="glass-panel" style={{ borderRadius: '0 0 10px 10px', borderTop: 'none', padding: '12px 24px', marginBottom: '24px' }}>
@@ -49,7 +55,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Tab Navigation */}
         <nav style={{ display: 'flex', gap: '6px', background: 'var(--surface-inset)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
           {tabs.map((tab) => {
-            const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -71,8 +76,34 @@ export const Navbar: React.FC<NavbarProps> = ({
                   boxShadow: 'none'
                 }}
               >
-                <Icon size={16} />
+                {tab.step === null ? (
+                  <Home size={15} />
+                ) : (
+                  <span
+                    className="font-mono"
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      background: isActive ? 'var(--primary)' : 'var(--bg-card-hover)',
+                      color: isActive ? '#ffffff' : 'var(--text-muted)',
+                    }}
+                  >
+                    {tab.step}
+                  </span>
+                )}
                 <span>{tab.label}</span>
+                {tab.id === 'training' && isTraining && (
+                  <span
+                    title="Training is running"
+                    style={{ width: 7, height: 7, borderRadius: 4, background: 'var(--accent-emerald)', animation: 'pulse 1.2s ease-in-out infinite' }}
+                  />
+                )}
               </button>
             );
           })}

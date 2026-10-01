@@ -1,0 +1,118 @@
+import React from 'react';
+import { ArrowRight, FlaskConical } from 'lucide-react';
+import { ChickenLogo } from './ChickenLogo';
+
+interface StartViewProps {
+  onNavigate: (tab: string) => void;
+  guidesHidden: boolean;
+  onShowGuides: () => void;
+}
+
+const STEPS = [
+  {
+    step: 1,
+    tab: 'setup',
+    title: 'Set up',
+    text: 'Pick the text your model will learn from, how it splits text into tokens, and how big the model is. The defaults are a fine place to start.',
+  },
+  {
+    step: 2,
+    tab: 'training',
+    title: 'Train',
+    text: 'Press Start and watch the loss fall as the model learns to predict the next token. Then run the benchmark to see what it picked up.',
+  },
+  {
+    step: 3,
+    tab: 'pipeline',
+    title: 'Look inside',
+    text: 'Type a prompt and follow it through every stage: tokens, embeddings, attention, and the final prediction.',
+  },
+];
+
+const EXPERIMENTS = [
+  {
+    title: 'What does it learn first?',
+    text: 'Train Tiny Shakespeare for a couple of minutes, then run the benchmark. Simple, frequent patterns come first, like FIRST and SECOND being followed by CITIZEN.',
+  },
+  {
+    title: 'Watch attention form',
+    text: 'Open Look inside → Block 1 before you train, then again after. Attention starts spread evenly over every token and slowly develops favorites.',
+  },
+  {
+    title: 'Memorizing vs. learning',
+    text: 'Train on one of the small datasets and watch the two loss curves. When training loss keeps falling but validation loss stalls, the model is memorizing instead of generalizing.',
+  },
+];
+
+export const StartView: React.FC<StartViewProps> = ({ onNavigate, guidesHidden, onShowGuides }) => (
+  <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    {/* Intro */}
+    <div className="glass-panel" style={{ padding: '32px 32px 28px', display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <div style={{ background: 'var(--primary)', borderRadius: 14, padding: 14, display: 'flex', color: '#ffffff' }}>
+        <ChickenLogo size={48} />
+      </div>
+      <div style={{ flex: 1, minWidth: 280 }}>
+        <h2 style={{ fontSize: '1.6rem', fontWeight: 700, marginBottom: 8 }}>Raise your own language model</h2>
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.65 }}>
+          LLMStead builds a tiny transformer, the same kind of model behind ChatGPT and Claude, and trains it from scratch
+          right here in your browser. It's small enough to finish learning in minutes, and every step is open to inspect, so
+          you can watch how a language model goes from random numbers to (sort of) writing Shakespeare. Nothing you do here
+          leaves your computer.
+        </p>
+      </div>
+    </div>
+
+    {/* The path */}
+    <div>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>How it works: three steps, left to right</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+        {STEPS.map(s => (
+          <button
+            key={s.step}
+            onClick={() => onNavigate(s.tab)}
+            className="glass-panel"
+            style={{ padding: 18, textAlign: 'left', cursor: 'pointer', color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 8 }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span
+                className="font-mono"
+                style={{ width: 24, height: 24, borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, background: 'var(--primary)', color: '#ffffff' }}
+              >
+                {s.step}
+              </span>
+              <span style={{ fontWeight: 700 }}>{s.title}</span>
+            </div>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>{s.text}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* Experiments */}
+    <div className="glass-panel" style={{ padding: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <FlaskConical size={18} color="var(--accent-amber)" />
+        <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Not sure what to try? A few first experiments</h3>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {EXPERIMENTS.map(e => (
+          <div key={e.title} style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--surface-inset)', border: '1px solid var(--border-color)' }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.title}</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>{e.text}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
+      <button className="btn-primary" onClick={() => onNavigate('setup')} style={{ padding: '12px 22px', fontSize: '0.95rem' }}>
+        Start: set up your model <ArrowRight size={16} />
+      </button>
+      {guidesHidden && (
+        <button className="btn-secondary" onClick={onShowGuides}>
+          Show the step guides again
+        </button>
+      )}
+    </div>
+  </div>
+);

@@ -7,9 +7,11 @@ import { Navbar } from './components/Navbar';
 import { SetupView } from './components/SetupView';
 import { TrainingDashboard } from './components/TrainingDashboard';
 import { PipelineView } from './components/PipelineView';
+import { StartView } from './components/StartView';
+import { GuideStrip } from './components/GuideStrip';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('setup');
+  const [activeTab, setActiveTab] = useState<string>('start');
   // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches)
   const [datasets, setDatasets] = useState<DatasetOption[]>(SAMPLE_DATASETS);
   const [selectedDataset, setSelectedDataset] = useState<DatasetOption>(SAMPLE_DATASETS[0]);
@@ -89,6 +91,25 @@ export default function App() {
 
   const paramCount = model.getParameterCount();
 
+  // Step guides at the top of each step; hiding them is remembered in this browser
+  const [guidesHidden, setGuidesHidden] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('llmstead.hideGuides') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setGuides = (hidden: boolean) => {
+    setGuidesHidden(hidden);
+    try {
+      localStorage.setItem('llmstead.hideGuides', hidden ? '1' : '0');
+    } catch {
+      /* storage unavailable: the choice just won't persist */
+    }
+  };
+
+  const [isTraining, setIsTraining] = useState<boolean>(false);
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
       <Navbar
@@ -96,46 +117,76 @@ export default function App() {
         setActiveTab={setActiveTab}
         paramCount={paramCount}
         datasetName={selectedDataset.name}
+        isTraining={isTraining}
       />
 
       <main style={{ minHeight: '80vh' }}>
+        {activeTab === 'start' && (
+          <StartView onNavigate={setActiveTab} guidesHidden={guidesHidden} onShowGuides={() => setGuides(false)} />
+        )}
+
         {activeTab === 'setup' && (
-          <SetupView
-            datasets={datasets}
-            selectedDataset={selectedDataset}
-            onSelectDataset={handleSelectDataset}
-            onAddDataset={handleAddDataset}
-            tokenizer={tokenizer}
-            targetVocabSize={config.vocabSize}
-            onChangeVocabSize={(vocabSize) => setConfig(prev => ({ ...prev, vocabSize }))}
-            config={effectiveConfig}
-            // Setup sees the effective vocab; the target vocab only changes via its own slider
-            onChangeConfig={(next) => setConfig({ ...next, vocabSize: config.vocabSize })}
-            paramCount={paramCount}
-          />
+          <>
+            {!guidesHidden && (
+              <GuideStrip step={1} title="Set up your model" next={{ label: 'Next: Train', onClick: () => setActiveTab('training') }} onHide={() => setGuides(true)}>
+                Choose a dataset, then adjust the tokenizer and model size if you like. The defaults train well. Changing anything
+                marked "resets the model" starts training over.
+              </GuideStrip>
+            )}
+            <SetupView
+              datasets={datasets}
+              selectedDataset={selectedDataset}
+              onSelectDataset={handleSelectDataset}
+              onAddDataset={handleAddDataset}
+              tokenizer={tokenizer}
+              targetVocabSize={config.vocabSize}
+              onChangeVocabSize={(vocabSize) => setConfig(prev => ({ ...prev, vocabSize }))}
+              config={effectiveConfig}
+              // Setup sees the effective vocab; the target vocab only changes via its own slider
+              onChangeConfig={(next) => setConfig({ ...next, vocabSize: config.vocabSize })}
+              paramCount={paramCount}
+            />
+          </>
         )}
 
-        {activeTab === 'pipeline' && (
-          <PipelineView
-            inspectionData={inspectionData}
-            config={effectiveConfig}
-            tokenizer={tokenizer}
-            testInput={testSentence}
-            setTestInput={setTestSentence}
-            onRunInspect={runInspection}
-            tokenizerState={tokenizerState}
-            model={model}
-          />
-        )}
-
-        {activeTab === 'training' && (
+        {/* Kept mounted (just hidden) so the loss chart survives tab switches and training
+            keeps running in the background while you look inside the model */}
+        <div style={{ display: activeTab === 'training' ? 'block' : 'none' }}>
+          {!guidesHidden && (
+            <GuideStrip step={2} title="Train it" next={{ label: 'Next: Look inside', onClick: () => setActiveTab('pipeline') }} onHide={() => setGuides(true)}>
+              Press Start and watch the loss fall. Training keeps going if you switch tabs. When the curve levels off, run the
+              benchmark, then look inside to see what changed.
+            </GuideStrip>
+          )}
           <TrainingDashboard
             model={model}
             tokenizer={tokenizer}
             config={effectiveConfig}
             selectedDataset={selectedDataset}
             onNavigateToSetup={() => setActiveTab('setup')}
+            onTrainingChange={setIsTraining}
           />
+        </div>
+
+        {activeTab === 'pipeline' && (
+          <>
+            {!guidesHidden && (
+              <GuideStrip step={3} title="Look inside" next={{ label: 'Back to Train', onClick: () => setActiveTab('training') }} onHide={() => setGuides(true)}>
+                Type a prompt, click a stage to see what happens to it there, and click a token to follow it through the model.
+                Compare the same prompt before and after more training.
+              </GuideStrip>
+            )}
+            <PipelineView
+              inspectionData={inspectionData}
+              config={effectiveConfig}
+              tokenizer={tokenizer}
+              testInput={testSentence}
+              setTestInput={setTestSentence}
+              onRunInspect={runInspection}
+              tokenizerState={tokenizerState}
+              model={model}
+            />
+          </>
         )}
       </main>
 
