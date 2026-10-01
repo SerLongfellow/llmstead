@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, FlaskConical } from 'lucide-react';
+import { ArrowRight, CircleSlash, FlaskConical } from 'lucide-react';
 import { ChickenLogo } from './ChickenLogo';
 
 interface StartViewProps {
@@ -26,6 +26,25 @@ const STEPS = [
     tab: 'pipeline',
     title: 'Look inside',
     text: 'Type a prompt and follow it through every stage: tokens, embeddings, attention, and the final prediction.',
+  },
+];
+
+const NOT_THIS = [
+  {
+    title: 'Not a useful model.',
+    text: "With about 30,000 parameters and a few pages of text, it learns patterns it has seen, like 3 + 4 = 7, and little else. It can't hold a conversation, answer real questions, or reliably do sums it hasn't seen.",
+  },
+  {
+    title: 'Not how real models are trained.',
+    text: 'Real training runs on clusters of GPUs with frameworks like PyTorch, feeding in thousands of sequences at once for weeks. Here it is one short window at a time, in plain JavaScript on your CPU, so every step can be read and inspected.',
+  },
+  {
+    title: 'Not the whole recipe behind chat assistants.',
+    text: 'This covers pre-training: learning to predict the next token. Assistants like ChatGPT and Claude also go through fine-tuning and training on human feedback, which LLMStead doesn\'t do (yet).',
+  },
+  {
+    title: 'Not an exact copy of a modern LLM.',
+    text: 'The architecture is a simplified transformer. Modern models add refinements such as different normalization and position encodings, but the core ideas (tokens, embeddings, attention, next-token prediction) are the same.',
   },
 ];
 
@@ -84,6 +103,24 @@ export const StartView: React.FC<StartViewProps> = ({ onNavigate, guidesHidden, 
             </div>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>{s.text}</span>
           </button>
+        ))}
+      </div>
+    </div>
+
+    {/* Expectations */}
+    <div className="glass-panel" style={{ padding: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <CircleSlash size={18} color="var(--accent-rose)" />
+        <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>What this isn't</h3>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {NOT_THIS.map(n => (
+          <div key={n.title} style={{ display: 'grid', gridTemplateColumns: '14px 1fr', gap: 10 }}>
+            <span style={{ color: 'var(--accent-rose)', fontWeight: 700, lineHeight: 1.5 }}>×</span>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{n.title}</span> {n.text}
+            </div>
+          </div>
         ))}
       </div>
     </div>

@@ -9,6 +9,7 @@ import { TrainingDashboard } from './components/TrainingDashboard';
 import { PipelineView } from './components/PipelineView';
 import { StartView } from './components/StartView';
 import { GuideStrip } from './components/GuideStrip';
+import { Github } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('start');
@@ -192,6 +193,16 @@ export default function App() {
 
       <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
         <p>LLMStead • Raise your own models: a tiny transformer, built and trained from scratch in your browser</p>
+        <p style={{ marginTop: '8px' }}>
+          <a
+            href="https://github.com/SerLongfellow/llmstead"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Github size={14} /> View the source on GitHub
+          </a>
+        </p>
       </footer>
     </div>
   );
