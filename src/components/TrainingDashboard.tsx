@@ -4,9 +4,10 @@ import { MicroTransformer } from '../engine/transformer';
 import { BPETokenizer } from '../engine/bpeTokenizer';
 import { splitDataset, samplePromptFor, VALIDATION_FRACTION } from '../engine/datasets';
 import { generateContinuation } from '../engine/generate';
-import { Play, Pause, RotateCcw, FastForward, Activity, Sparkles, BookOpen } from 'lucide-react';
+import { Play, Pause, RotateCcw, FastForward, Activity, Sparkles, BookOpen, Turtle } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 import { BenchmarkPanel } from './BenchmarkPanel';
+import { SlowMotionPanel, SlowStep, STAGES } from './SlowMotionPanel';
 import { THEME, withAlpha } from '../styles/theme';
 import {
   Chart as ChartJS,
@@ -26,6 +27,9 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 const VAL_EVERY = 50;
 const MAX_VAL_WINDOWS = 32;
 
+/** Slow motion: how long each stage (Sample, Forward, Compare, Backward, Update) stays on screen */
+const STAGE_MS = [1600, 1600, 2600, 1600, 3000];
+
 /**
  * While training runs, each tick does as many steps as fit in this many milliseconds, then
  * yields so the page can repaint. The chart and validation update once per tick, not once
@@ -43,6 +47,7 @@ interface TrainingDashboardProps {
   onTrainingChange?: (isTraining: boolean) => void;
   onChangeLearningRate: (lr: number) => void;
   onChangeOptimizer: (opt: TransformerConfig['optimizer']) => void;
+  visible: boolean; // whether the Train tab is showing (it stays mounted while hidden)
 }
 
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
@@ -54,6 +59,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   onTrainingChange,
   onChangeLearningRate,
   onChangeOptimizer,
+  visible,
 }) => {
   const [isTraining, setIsTraining] = useState<boolean>(false);
   useEffect(() => {
@@ -98,6 +104,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   useEffect(() => {
     setIsTraining(false);
     resetHistory();
+    setSlowStep(null);
+    setStage(0);
   }, [model]);
 
   /**
@@ -137,18 +145,31 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     let lossSum = 0;
     let steps = 0;
     do {
-      // Pick a random context-sized window from the TRAINING split only. Random sampling
-      // (rather than sliding one token per step) means every part of the text gets seen early.
-      const maxStart = Math.max(1, trainTokens.length - config.contextWindow - 1);
-      const startIdx = Math.floor(Math.random() * maxStart);
-
-      const inputSeq = trainTokens.slice(startIdx, startIdx + config.contextWindow);
-      const targetSeq = trainTokens.slice(startIdx + 1, startIdx + config.contextWindow + 1);
-
+      const { inputSeq, targetSeq } = pickWindow();
       lossSum += model.trainStep(inputSeq, targetSeq, config.learningRate).loss;
       steps++;
     } while (steps < maxSteps && performance.now() - t0 < budgetMs);
 
+    recordSteps(startStep, lossSum, steps);
+  };
+
+  /**
+   * Pick a random context-sized window from the TRAINING split only. Random sampling
+   * (rather than sliding one token per step) means every part of the text gets seen early.
+   */
+  const pickWindow = () => {
+    const { config, trainTokens } = latest.current;
+    const maxStart = Math.max(1, trainTokens.length - config.contextWindow - 1);
+    const startIdx = Math.floor(Math.random() * maxStart);
+    return {
+      startIdx,
+      inputSeq: trainTokens.slice(startIdx, startIdx + config.contextWindow),
+      targetSeq: trainTokens.slice(startIdx + 1, startIdx + config.contextWindow + 1),
+    };
+  };
+
+  /** Advance the step counter and add ONE chart point (mean loss over `steps` steps) */
+  const recordSteps = (startStep: number, lossSum: number, steps: number) => {
     stepRef.current += steps;
     const nextStep = stepRef.current;
     // Validate on the first step and whenever this batch crossed a multiple of VAL_EVERY
@@ -161,12 +182,96 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     setValLossHistory(h => [...h, valLoss === null ? null : Number(valLoss.toFixed(4))]);
   };
 
-  // "Step" button: exactly one training step
-  const performTrainStep = () => runTrainingSteps(1, Infinity);
+  /**
+   * One training step that also captures everything the slow-motion panel replays:
+   * per-position predictions and errors, per-layer gradient sizes, and the same window
+   * re-checked after the update. Costs a few extra forward passes, fine at slow-motion speed.
+   */
+  const runDetailedStep = (): SlowStep | null => {
+    const { model, config, trainTokens } = latest.current;
+    if (trainTokens.length < 2) return null;
+    const startStep = stepRef.current;
+    const { startIdx, inputSeq, targetSeq } = pickWindow();
+    const n = Math.min(inputSeq.length, targetSeq.length);
+    const strs = (ids: number[]) => ids.map(id => tokenizer.decode([id]));
+
+    const before = model.inspectForwardPass(inputSeq.slice(0, n), strs(inputSeq.slice(0, n)));
+    const probsBefore = before.probabilities.map((row, i) => row[targetSeq[i]] ?? 0);
+    const losses = probsBefore.map(p => -Math.log(Math.max(p, 1e-10)));
+    const preds = before.probabilities.map(row => row.reduce((best, v, k) => (v > row[best] ? k : best), 0));
+
+    // Gradient size per part of the model (computed before the update, from the same window)
+    const { grads } = model.computeGradients(inputSeq.slice(0, n), targetSeq.slice(0, n));
+    const norm = (names: string[]) =>
+      Math.sqrt(names.reduce((s, name) => s + grads[name].reduce((t, row) => t + row.reduce((u, v) => u + v * v, 0), 0), 0));
+    const names = Object.keys(grads);
+    const gradGroups = [
+      { name: 'Embedding', norm: norm(['wTokenEmbed', 'wPosEmbed']) },
+      ...Array.from({ length: config.numLayers }, (_, l) => ({
+        name: `Block ${l + 1}`,
+        norm: norm(names.filter(k => k.endsWith(`.${l}`))),
+      })),
+      { name: 'Output head', norm: norm(['wHead']) },
+    ];
+
+    const result = model.trainStep(inputSeq.slice(0, n), targetSeq.slice(0, n), config.learningRate);
+
+    const after = model.inspectForwardPass(inputSeq.slice(0, n), strs(inputSeq.slice(0, n)));
+    const probsAfter = after.probabilities.map((row, i) => row[targetSeq[i]] ?? 0);
+    const lossAfter = probsAfter.reduce((s, p) => s - Math.log(Math.max(p, 1e-10)), 0) / n;
+
+    recordSteps(startStep, result.loss, 1);
+    return {
+      stepNumber: stepRef.current,
+      windowStart: startIdx,
+      totalTokens: trainTokens.length,
+      inputStrs: strs(inputSeq.slice(0, n)),
+      targetStrs: strs(targetSeq.slice(0, n)),
+      predStrs: strs(preds),
+      predProbs: preds.map((k, i) => before.probabilities[i][k]),
+      probsBefore,
+      probsAfter,
+      losses,
+      lossBefore: result.loss,
+      lossAfter,
+      gradGroups,
+      learningRate: config.learningRate,
+    };
+  };
+
+  // ── Slow motion: one detailed step at a time, replayed stage by stage ──
+  const [slowMo, setSlowMo] = useState<boolean>(false);
+  const [slowStep, setSlowStep] = useState<SlowStep | null>(null);
+  const [stage, setStage] = useState<number>(0);
+  const [spotlight, setSpotlight] = useState<number>(Infinity); // Infinity = last position
+
+  const startSlowStep = () => {
+    const s = runDetailedStep();
+    if (!s) return;
+    setSlowStep(s);
+    setStage(1);
+  };
+
+  // While playing, advance one stage at a time; after the last stage, run the next step
+  useEffect(() => {
+    if (!slowMo || !isTraining) return;
+    const timer = window.setTimeout(
+      () => (!slowStep || stage >= STAGES.length ? startSlowStep() : setStage(st => st + 1)),
+      slowStep ? STAGE_MS[stage - 1] ?? 0 : 0
+    );
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slowMo, isTraining, stage, slowStep]);
+
+  // Paused: the panel's button steps through stages by hand
+  const nextSlowStage = () => (!slowStep || stage >= STAGES.length ? startSlowStep() : setStage(st => st + 1));
+
+  // "Step" button: exactly one training step (replayed stage by stage in slow motion)
+  const performTrainStep = () => (slowMo ? startSlowStep() : runTrainingSteps(1, Infinity));
 
   // Continuous loop: a time-boxed batch of steps per tick, with a short gap so React can repaint
   useEffect(() => {
-    if (!isTraining) return;
+    if (!isTraining || slowMo) return;
     let timer: number;
     const tick = () => {
       runTrainingSteps(Infinity, TICK_BUDGET_MS);
@@ -174,7 +279,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     };
     timer = window.setTimeout(tick, 0);
     return () => clearTimeout(timer);
-  }, [isTraining]);
+  }, [isTraining, slowMo]);
 
   // Handle Text Generation Sampling
   const handleGenerate = () => {
@@ -184,6 +289,18 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     });
     setGeneratedText(seedPrompt + continuation);
   };
+
+  // The chart is created while the tab may be hidden (0×0) and doesn't always notice when it
+  // becomes visible, so resize it explicitly whenever the Train tab is shown
+  const chartBoxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!visible) return;
+    const timer = window.setTimeout(() => {
+      const canvas = chartBoxRef.current?.querySelector('canvas');
+      if (canvas) ChartJS.getChart(canvas)?.resize();
+    });
+    return () => clearTimeout(timer);
+  }, [visible]);
 
   const chartData = {
     labels: stepLabels,
@@ -232,6 +349,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
         grid: { color: withAlpha(THEME.border, 0.6) }
       },
       y: {
+        title: { display: true, text: 'Loss (lower is better)', color: THEME.textMuted, font: { family: 'Inter', size: 11 } },
         ticks: { color: THEME.textDim },
         grid: { color: withAlpha(THEME.border, 0.6) }
       }
@@ -240,10 +358,10 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 480px), 1fr))', gap: '20px' }}>
-      {/* Left Column: Dataset & Loss Chart */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Training controls: full width, so the slow-motion panel can sit directly underneath */}
+      <div className="glass-panel" style={{ padding: '16px 24px', gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {/* What's being trained on (chosen in Setup, since changing it resets the model) */}
-        <div className="glass-panel" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BookOpen size={20} color="var(--accent-purple)" />
             <div>
@@ -253,36 +371,23 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
               </p>
             </div>
           </div>
-          <button className="btn-secondary" onClick={onNavigateToSetup} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
-            Change in Setup
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span className="badge badge-primary font-mono">Step: #{stepCount}</span>
+            <button className="btn-secondary" onClick={onNavigateToSetup} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+              Change in Setup
+            </button>
+          </div>
         </div>
 
-        {/* Training Loss Chart */}
-        <div className="glass-panel" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Activity size={20} color="var(--primary)" />
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Real-Time Training Loss Curve</h3>
-              <InfoTooltip
-                title="Cross-Entropy Loss Curve"
-                description="Measures model prediction uncertainty. Training loss is measured on the window just trained on; validation loss is measured on the held-out tail of the dataset the model never trains on."
-                impact="If training loss keeps falling while validation loss rises, the model is memorizing (overfitting) rather than generalizing."
-              />
-            </div>
-            <span className="badge badge-primary font-mono">
-              Step: #{stepCount}
-            </span>
-          </div>
-
-          {/* Controller Buttons */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap', paddingTop: '14px', borderTop: '1px solid var(--border-color)' }}>
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
               className={isTraining ? 'btn-secondary' : 'btn-primary'}
               onClick={() => setIsTraining(!isTraining)}
             >
               {isTraining ? <Pause size={16} /> : <Play size={16} />}
-              {isTraining ? 'Pause Training' : 'Start Continuous Train'}
+              {isTraining ? 'Pause Training' : slowMo ? 'Play Slow Motion' : 'Start Continuous Train'}
             </button>
 
             <button className="btn-secondary" onClick={performTrainStep}>
@@ -296,62 +401,134 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
                 resetHistory();
               }}
               title="Clears the chart. Weights are only re-initialized when the architecture, tokenizer or dataset changes."
-
             >
               <RotateCcw size={16} /> Reset
             </button>
           </div>
 
           {/* Settings that are safe to change while training runs */}
-          <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '16px', padding: '12px 14px', borderRadius: '8px', background: 'var(--surface-inset)', border: '1px solid var(--border-color)' }}>
-            <div style={{ flex: '1 1 220px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Learning rate</label>
-                  <InfoTooltip
-                    title="Learning Rate"
-                    description="How big a step each weight takes on every update. Safe to change while training: the weights are kept."
-                    impact="Too high and the loss jumps around or explodes; too low and learning crawls. 0.001 works well with AdamW here."
-                  />
-                </div>
-                <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--accent-rose)' }}>{config.learningRate}</span>
-              </div>
-              <input
-                type="range"
-                min={0.001}
-                max={0.05}
-                step={0.001}
-                value={config.learningRate}
-                onChange={(e) => onChangeLearningRate(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Optimizer</label>
+          <div style={{ flex: '1 1 200px', minWidth: '180px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Learning rate</label>
                 <InfoTooltip
-                  title="Optimizer"
-                  description="SGD steps every weight by lr × gradient. AdamW keeps running averages of each weight's gradient (momentum) and squared gradient, giving every weight its own adaptive step size, and applies weight decay separately from the gradient."
-                  impact="AdamW usually converges much faster on transformers. Switching resets AdamW's running averages but keeps the learned weights."
+                  title="Learning Rate"
+                  description="How big a step each weight takes on every update. Safe to change while training: the weights are kept."
+                  impact="Too high and the loss jumps around or explodes; too low and learning crawls. 0.001 works well with AdamW here."
                 />
               </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {(['adamw', 'sgd'] as const).map(opt => (
-                  <button
-                    key={opt}
-                    className={config.optimizer === opt ? 'btn-primary' : 'btn-secondary'}
-                    style={{ padding: '4px 12px', fontSize: '0.8rem' }}
-                    onClick={() => onChangeOptimizer(opt)}
-                  >
-                    {opt === 'adamw' ? 'AdamW' : 'SGD'}
-                  </button>
-                ))}
-              </div>
+              <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--accent-rose)' }}>{config.learningRate}</span>
+            </div>
+            <input
+              type="range"
+              min={0.001}
+              max={0.05}
+              step={0.001}
+              value={config.learningRate}
+              onChange={(e) => onChangeLearningRate(Number(e.target.value))}
+            />
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Optimizer</label>
+              <InfoTooltip
+                title="Optimizer"
+                description="SGD steps every weight by lr × gradient. AdamW keeps running averages of each weight's gradient (momentum) and squared gradient, giving every weight its own adaptive step size, and applies weight decay separately from the gradient."
+                impact="AdamW usually converges much faster on transformers. Switching resets AdamW's running averages but keeps the learned weights."
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {(['adamw', 'sgd'] as const).map(opt => (
+                <button
+                  key={opt}
+                  className={config.optimizer === opt ? 'btn-primary' : 'btn-secondary'}
+                  style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+                  onClick={() => onChangeOptimizer(opt)}
+                >
+                  {opt === 'adamw' ? 'AdamW' : 'SGD'}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div style={{ height: '260px', width: '100%' }}>
-            <Line data={chartData} options={chartOptions} />
-          </div>
+          {/* Slow motion is a viewing mode, not an action: a switch, set apart at the end */}
+          <button
+            role="switch"
+            aria-checked={slowMo}
+            onClick={() => setSlowMo(!slowMo)}
+            title="Replay training one step at a time: sample, forward pass, error, backpropagation, update"
+            style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              border: `1px solid ${slowMo ? 'var(--accent-emerald)' : 'var(--border-color)'}`,
+              background: slowMo ? 'var(--emerald-soft)' : 'var(--surface-inset)',
+              color: 'var(--text-main)',
+            }}
+          >
+            <Turtle size={18} color={slowMo ? 'var(--accent-emerald)' : 'var(--text-muted)'} />
+            <span style={{ textAlign: 'left', lineHeight: 1.25 }}>
+              <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700 }}>Slow motion</span>
+              <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-dim)' }}>See inside each step</span>
+            </span>
+            {/* the switch itself */}
+            <span
+              style={{
+                width: 34,
+                height: 20,
+                borderRadius: 10,
+                position: 'relative',
+                flexShrink: 0,
+                background: slowMo ? 'var(--accent-emerald)' : 'var(--border-strong)',
+                transition: 'background 0.15s',
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  left: slowMo ? 16 : 2,
+                  width: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  background: '#ffffff',
+                  transition: 'left 0.15s',
+                }}
+              />
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {slowMo && (
+        <SlowMotionPanel
+          step={slowStep}
+          stage={stage}
+          playing={isTraining}
+          spotlight={spotlight}
+          onSpotlight={setSpotlight}
+          onNextStage={nextSlowStage}
+        />
+      )}
+
+      {/* Left Column: Loss Chart */}
+      <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+          <Activity size={20} color="var(--primary)" />
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Real-Time Training Loss Curve</h3>
+          <InfoTooltip
+            title="Cross-Entropy Loss Curve"
+            description="Measures model prediction uncertainty. Training loss is measured on the window just trained on; validation loss is measured on the held-out tail of the dataset the model never trains on."
+            impact="If training loss keeps falling while validation loss rises, the model is memorizing (overfitting) rather than generalizing."
+          />
+        </div>
+        <div ref={chartBoxRef} style={{ flex: 1, minHeight: '260px', width: '100%', position: 'relative' }}>
+          <Line data={chartData} options={chartOptions} />
         </div>
       </div>
 

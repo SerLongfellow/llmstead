@@ -203,3 +203,17 @@ input[type="text"]:focus, textarea:focus, select:focus {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+/* Slow-motion training: a box lights up as the forward (blue) or backward (red) pass reaches it */
+@keyframes pulseForward {
+  0% { background: var(--surface-inset); border-color: var(--border-color); }
+  35% { background: var(--primary-tint); border-color: var(--primary); }
+  100% { background: var(--primary-soft); border-color: var(--primary); }
+}
+@keyframes pulseBackward {
+  0% { background: var(--surface-inset); border-color: var(--border-color); }
+  35% { background: color-mix(in srgb, var(--accent-rose) 35%, transparent); border-color: var(--accent-rose); }
+  100% { background: color-mix(in srgb, var(--accent-rose) 14%, transparent); border-color: var(--accent-rose); }
+}
+.pulse-fwd { animation: pulseForward 0.7s ease both; }
+.pulse-bwd { animation: pulseBackward 0.7s ease both; }

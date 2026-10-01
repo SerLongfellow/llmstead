@@ -166,6 +166,7 @@ export default function App() {
             onTrainingChange={setIsTraining}
             onChangeLearningRate={(learningRate) => setConfig(prev => ({ ...prev, learningRate }))}
             onChangeOptimizer={(optimizer) => setConfig(prev => ({ ...prev, optimizer }))}
+            visible={activeTab === 'training'}
           />
         </div>
 
