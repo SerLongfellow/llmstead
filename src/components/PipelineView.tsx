@@ -6,6 +6,7 @@ import { AttentionGrid } from './AttentionGrid';
 import { MergeHistory } from './MergeHistory';
 import { showTok, cosine, TokenChip } from './tokenUi';
 import { EmbeddingSpace } from './EmbeddingSpace';
+import { THEME, rgb } from '../styles/theme';
 import { MicroTransformer } from '../engine/transformer';
 
 interface PipelineViewProps {
@@ -49,9 +50,9 @@ const MatrixHeatmap: React.FC<{ matrix: Matrix; highlightRow?: number; height?: 
     for (const row of matrix) for (const v of row) maxAbs = Math.max(maxAbs, Math.abs(v));
 
     const img = ctx.createImageData(cols, rows);
-    const bg = [11, 18, 32];
-    const pos = [6, 182, 212];
-    const neg = [244, 63, 94];
+    const bg = rgb(THEME.bg);
+    const pos = rgb(THEME.cyan);
+    const neg = rgb(THEME.rose);
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const t = matrix[r][c] / maxAbs;
@@ -134,8 +135,8 @@ const FocusRow: React.FC<{ active: boolean; onClick: () => void; children: React
     onClick={onClick}
     style={{
       cursor: 'pointer',
-      borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-      background: active ? 'rgba(245, 158, 11, 0.12)' : undefined,
+      borderBottom: '1px solid var(--border-color)',
+      background: active ? 'var(--amber-soft)' : undefined,
       outline: active ? '1px solid var(--accent-amber)' : undefined,
     }}
   >
@@ -261,7 +262,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
       caption: 'Most likely pick',
       visual: (
         <div style={{ height: 72, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <TokenChip text={predTok} bg="rgba(99, 102, 241, 0.3)" />
+          <TokenChip text={predTok} bg="var(--primary-tint)" />
         </div>
       ),
     },
@@ -272,7 +273,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
       return (
         <>
           <SectionTitle step="Stage 1" title="Text in" />
-          <div className="font-mono" style={{ padding: 12, background: 'rgba(15, 23, 42, 0.6)', borderRadius: 8, whiteSpace: 'pre-wrap' }}>
+          <div className="font-mono" style={{ padding: 12, background: 'var(--surface-inset)', borderRadius: 8, whiteSpace: 'pre-wrap' }}>
             {data.inputString}
           </div>
           <Explain>
@@ -301,11 +302,11 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
             the model only works with the numbers underneath: each token's ID in a vocabulary of {config.vocabSize}.
           </Explain>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-            <div style={{ background: 'rgba(15, 23, 42, 0.4)', padding: 14, borderRadius: 8, border: '1px solid var(--border-color)' }}>
+            <div style={{ background: 'var(--surface-inset)', padding: 14, borderRadius: 8, border: '1px solid var(--border-color)' }}>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>What the model receives: token IDs [1 × {seqLen}]</p>
               <code className="font-mono" style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)' }}>[{data.tokens.join(', ')}]</code>
             </div>
-            <div style={{ background: 'rgba(15, 23, 42, 0.4)', padding: 14, borderRadius: 8, border: '1px solid var(--border-color)' }}>
+            <div style={{ background: 'var(--surface-inset)', padding: 14, borderRadius: 8, border: '1px solid var(--border-color)' }}>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 4 }}>Decoded back to text (tokenization is lossless)</p>
               <p className="font-mono" style={{ fontSize: '0.85rem', color: 'var(--accent-emerald)', whiteSpace: 'pre-wrap' }}>"{tokenizer.decode(data.tokens)}"</p>
             </div>
@@ -410,7 +411,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                         <TokenChip
                           text={data.tokenStrings[j]}
                           active={j === f}
-                          bg={`rgba(168, 85, 247, ${0.06 + 0.8 * (w / maxW)})`}
+                          bg={`color-mix(in srgb, var(--accent-purple) ${Math.round(6 + 74 * (w / maxW))}%, transparent)`}
                           onClick={() => setFocus(j)}
                         />
                         <span className="font-mono" style={{ fontSize: '0.6rem', color: 'var(--text-dim)' }}>{Math.round(w * 100)}%</span>
@@ -438,7 +439,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                       fontSize: '0.8rem',
                       fontWeight: 600,
                       cursor: 'pointer',
-                      background: head === h ? 'var(--primary)' : 'rgba(15, 23, 42, 0.6)',
+                      background: head === h ? 'var(--primary)' : 'var(--surface-inset)',
                       color: head === h ? '#ffffff' : 'var(--text-muted)',
                     }}
                   >
@@ -529,8 +530,8 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxWidth: 560 }}>
             {top.map(({ id, p }) => (
               <div key={id} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 56px', gap: 10, alignItems: 'center' }}>
-                <TokenChip text={tokenizer.decode([id])} bg={id === actualNext ? 'rgba(16, 185, 129, 0.3)' : undefined} />
-                <div style={{ height: 12, background: 'rgba(15, 23, 42, 0.6)', borderRadius: 3 }}>
+                <TokenChip text={tokenizer.decode([id])} bg={id === actualNext ? 'var(--emerald-tint)' : undefined} />
+                <div style={{ height: 12, background: 'var(--surface-inset)', borderRadius: 3 }}>
                   <div style={{ width: `${p * 100}%`, height: '100%', background: 'var(--primary)', borderRadius: 3 }} />
                 </div>
                 <span className="font-mono" style={{ fontSize: '0.75rem', textAlign: 'right' }}>{(p * 100).toFixed(1)}%</span>
@@ -539,7 +540,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
           </div>
           {actualNext !== null && (
             <Explain>
-              In your input, the token that actually comes next is <TokenChip text={data.tokenStrings[f + 1]} bg="rgba(16, 185, 129, 0.3)" />.
+              In your input, the token that actually comes next is <TokenChip text={data.tokenStrings[f + 1]} bg="var(--emerald-tint)" />.
               The model ranks it <b>#{actualRank + 1}</b> at {(probs[actualNext] * 100).toFixed(1)}%. Training pushes this
               number up: the loss is −log of it.
             </Explain>
@@ -560,7 +561,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                 <FocusRow key={i} active={i === f} onClick={() => setFocus(i)}>
                   <td style={td} className="font-mono">{i}</td>
                   <td style={td}><TokenChip text={data.tokenStrings[i]} active={i === f} /></td>
-                  <td style={td}><TokenChip text={tokenizer.decode([top])} bg={hit ? 'rgba(16, 185, 129, 0.3)' : 'rgba(99, 102, 241, 0.25)'} /></td>
+                  <td style={td}><TokenChip text={tokenizer.decode([top])} bg={hit ? 'var(--emerald-tint)' : 'var(--primary-tint)'} /></td>
                   <td style={{ ...td, fontWeight: 600 }} className="font-mono">{(p[top] * 100).toFixed(1)}%</td>
                   <td style={td}>{next !== null ? <TokenChip text={data.tokenStrings[i + 1]} /> : <span style={{ color: 'var(--text-dim)' }}>(end of input)</span>}</td>
                   <td style={td} className="font-mono">{next !== null ? `${(p[next] * 100).toFixed(1)}%` : '—'}</td>
@@ -578,12 +579,12 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
     return (
       <>
         <SectionTitle step={`Stage ${5 + config.numLayers}`} title="Pick the next token" />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: 12, background: 'rgba(15, 23, 42, 0.6)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: 12, background: 'var(--surface-inset)', borderRadius: 8 }}>
           {data.tokenStrings.slice(0, f + 1).map((t, i) => (
             <TokenChip key={i} text={t} active={i === f} />
           ))}
           <ChevronRight size={16} color="var(--text-dim)" />
-          <TokenChip text={predTok} bg="rgba(99, 102, 241, 0.35)" />
+          <TokenChip text={predTok} bg="var(--primary-tint)" />
           <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{(probs[predId] * 100).toFixed(1)}%</span>
         </div>
         <Explain>
@@ -654,7 +655,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                     padding: 10,
                     borderRadius: 10,
                     cursor: 'pointer',
-                    background: active ? 'rgba(99, 102, 241, 0.15)' : 'rgba(15, 23, 42, 0.6)',
+                    background: active ? 'var(--primary-soft)' : 'var(--surface-inset)',
                     border: `1px solid ${active ? 'var(--primary)' : 'var(--border-color)'}`,
                     color: 'var(--text-main)',
                     display: 'flex',

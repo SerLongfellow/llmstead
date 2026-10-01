@@ -4,7 +4,7 @@ import { Layers } from 'lucide-react';
 
 /** Read-only list of the merges BPE learned, in order (shown in the Pipeline's Tokens stage). */
 export const MergeHistory: React.FC<{ tokenizerState: BPETokenizerState }> = ({ tokenizerState }) => (
-  <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '16px' }}>
+  <div style={{ background: 'var(--surface-inset)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '16px' }}>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <Layers size={18} color="var(--accent-amber)" />
@@ -28,7 +28,7 @@ export const MergeHistory: React.FC<{ tokenizerState: BPETokenizerState }> = ({ 
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '8px 12px',
-              background: 'rgba(15, 23, 42, 0.5)',
+              background: 'var(--surface-inset)',
               border: '1px solid var(--border-color)',
               borderRadius: '6px',
               fontSize: '0.82rem'
@@ -40,7 +40,7 @@ export const MergeHistory: React.FC<{ tokenizerState: BPETokenizerState }> = ({ 
               <span style={{ color: 'var(--text-dim)' }}>+</span>
               <span className="font-mono" style={{ color: 'var(--accent-cyan)', whiteSpace: 'pre' }}>"{merge.pair[1]}"</span>
               <span style={{ color: 'var(--text-dim)' }}>➔</span>
-              <span className="font-mono" style={{ color: '#ffffff', fontWeight: 700, background: 'rgba(99, 102, 241, 0.3)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'pre' }}>
+              <span className="font-mono" style={{ color: 'var(--text-main)', fontWeight: 700, background: 'var(--primary-tint)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'pre' }}>
                 "{merge.newToken}"
               </span>
             </div>

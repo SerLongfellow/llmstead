@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BPETokenizer } from '../engine/bpeTokenizer';
 import { showTok, TokenChip } from './tokenUi';
+import { THEME } from '../styles/theme';
 
 interface EmbeddingSpaceProps {
   embeddings: number[][];       // snapshot of the token embedding table [vocab × dModel]
@@ -21,11 +22,11 @@ const norm = (a: Vec) => Math.sqrt(dot(a, a));
 
 /** Rough token categories, used to color the map */
 const category = (t: string) => {
-  if (/^\d$/.test(t)) return { label: 'digit', color: '#06b6d4' };
-  if (/^[A-Z]$/.test(t)) return { label: 'uppercase letter', color: '#f59e0b' };
-  if (/^[a-z]$/.test(t)) return { label: 'lowercase letter', color: '#10b981' };
-  if (t.length === 1) return { label: 'space / punctuation', color: '#94a3b8' };
-  return { label: 'merged token', color: '#a855f7' };
+  if (/^\d$/.test(t)) return { label: 'digit', color: THEME.cyan };
+  if (/^[A-Z]$/.test(t)) return { label: 'uppercase letter', color: THEME.amber };
+  if (/^[a-z]$/.test(t)) return { label: 'lowercase letter', color: THEME.emerald };
+  if (t.length === 1) return { label: 'space / punctuation', color: THEME.textMuted };
+  return { label: 'merged token', color: THEME.purple };
 };
 const LEGEND = ([['digit', '1'], ['uppercase letter', 'A'], ['lowercase letter', 'a'], ['space / punctuation', ','], ['merged token', 'ab']] as const).map(
   ([label, sample]) => ({ label, color: category(sample).color })
@@ -150,7 +151,7 @@ export const EmbeddingSpace: React.FC<EmbeddingSpaceProps> = ({ embeddings, idTo
       {rows.map(({ id, sim }) => (
         <div key={id} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 48px', gap: 8, alignItems: 'center' }}>
           <TokenChip text={tokStr(id)} />
-          <div style={{ height: 10, background: 'rgba(15, 23, 42, 0.6)', borderRadius: 3 }}>
+          <div style={{ height: 10, background: 'var(--surface-inset)', borderRadius: 3 }}>
             <div style={{ width: `${Math.max(0, sim) * 100}%`, height: '100%', background: 'var(--accent-purple)', borderRadius: 3 }} />
           </div>
           <span className="font-mono" style={{ fontSize: '0.72rem', textAlign: 'right' }}>{sim.toFixed(2)}</span>
@@ -222,7 +223,7 @@ export const EmbeddingSpace: React.FC<EmbeddingSpaceProps> = ({ embeddings, idTo
             PCA: these two directions keep {Math.round((map.shares[0] + map.shares[1]) * 100)}% of the spread in the {embeddings[0].length}-D vectors
           </span>
         </div>
-        <svg viewBox={`0 0 ${map.W} ${map.H}`} style={{ width: '100%', background: 'rgba(9, 13, 22, 0.8)', border: '1px solid var(--border-color)', borderRadius: 10 }}>
+        <svg viewBox={`0 0 ${map.W} ${map.H}`} style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border-color)', borderRadius: 10 }}>
           {map.pts.map(({ id, xy }) => {
             const t = tokStr(id);
             const hl = highlight.has(id) || hovered === id;
@@ -236,7 +237,7 @@ export const EmbeddingSpace: React.FC<EmbeddingSpaceProps> = ({ embeddings, idTo
                 fontFamily="JetBrains Mono, monospace"
                 fontSize={hl ? 13 : 9}
                 fontWeight={hl ? 800 : 500}
-                fill={id === focusTokenId ? '#f59e0b' : id === topId ? '#ffffff' : category(t).color}
+                fill={id === focusTokenId ? THEME.amber : id === topId ? THEME.textMain : category(t).color}
                 opacity={hl ? 1 : 0.75}
                 style={{ cursor: 'default' }}
                 onMouseEnter={() => setHovered(id)}
@@ -249,13 +250,13 @@ export const EmbeddingSpace: React.FC<EmbeddingSpaceProps> = ({ embeddings, idTo
           })}
           {resultXY && (
             <g>
-              <circle cx={map.sx(resultXY[0])} cy={map.sy(resultXY[1])} r={7} fill="none" stroke="#f43f5e" strokeWidth={2} />
+              <circle cx={map.sx(resultXY[0])} cy={map.sy(resultXY[1])} r={7} fill="none" stroke={THEME.rose} strokeWidth={2} />
               <text
                 x={map.sx(resultXY[0]) + (map.sx(resultXY[0]) > map.W * 0.8 ? -10 : 10)}
                 y={map.sy(resultXY[1]) - 8}
                 textAnchor={map.sx(resultXY[0]) > map.W * 0.8 ? 'end' : 'start'}
                 fontSize={10}
-                fill="#f43f5e"
+                fill={THEME.rose}
                 fontFamily="Inter, sans-serif"
               >
                 math result
@@ -269,8 +270,8 @@ export const EmbeddingSpace: React.FC<EmbeddingSpaceProps> = ({ embeddings, idTo
               <span style={{ width: 8, height: 8, borderRadius: 4, background: l.color }} /> {l.label}
             </span>
           ))}
-          <span style={{ color: '#f59e0b' }}>■ followed token</span>
-          <span style={{ color: '#f43f5e' }}>○ math result</span>
+          <span style={{ color: 'var(--accent-amber)' }}>■ followed token</span>
+          <span style={{ color: 'var(--accent-rose)' }}>○ math result</span>
         </div>
       </div>
     </div>

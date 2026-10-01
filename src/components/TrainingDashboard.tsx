@@ -7,6 +7,7 @@ import { generateContinuation } from '../engine/generate';
 import { Play, Pause, RotateCcw, FastForward, Activity, Sparkles, BookOpen } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 import { BenchmarkPanel } from './BenchmarkPanel';
+import { THEME, withAlpha } from '../styles/theme';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -175,8 +176,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
       {
         label: 'Training Loss',
         data: lossHistory,
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+        borderColor: THEME.primary,
+        backgroundColor: withAlpha(THEME.primary, 0.12),
         tension: 0.2,
         fill: true,
         pointRadius: lossHistory.length > 60 ? 0 : 3,
@@ -185,8 +186,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
       {
         label: `Validation Loss (held-out ${Math.round(VALIDATION_FRACTION * 100)}%)`,
         data: valLossHistory,
-        borderColor: '#f59e0b',
-        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+        borderColor: THEME.amber,
+        backgroundColor: withAlpha(THEME.amber, 0.12),
         borderDash: [6, 4],
         tension: 0.2,
         fill: false,
@@ -203,7 +204,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     animation: false as const,
     plugins: {
       legend: {
-        labels: { color: '#94a3b8', font: { family: 'Inter' } }
+        labels: { color: THEME.textMuted, font: { family: 'Inter' } }
       },
       tooltip: {
         mode: 'index' as const,
@@ -212,12 +213,12 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     },
     scales: {
       x: {
-        ticks: { color: '#64748b', maxTicksLimit: 12 },
-        grid: { color: 'rgba(255,255,255,0.05)' }
+        ticks: { color: THEME.textDim, maxTicksLimit: 12 },
+        grid: { color: withAlpha(THEME.border, 0.6) }
       },
       y: {
-        ticks: { color: '#64748b' },
-        grid: { color: 'rgba(255,255,255,0.05)' }
+        ticks: { color: THEME.textDim },
+        grid: { color: withAlpha(THEME.border, 0.6) }
       }
     }
   };
@@ -370,9 +371,9 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
         </div>
 
         {/* Output Text Window */}
-        <div style={{ flex: 1, background: 'rgba(15, 23, 42, 0.6)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, background: 'var(--surface-inset)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Model Output Generation:</p>
-          <div className="font-mono" style={{ flex: 1, minHeight: '120px', fontSize: '0.9rem', color: '#ffffff', whiteSpace: 'pre-wrap' }}>
+          <div className="font-mono" style={{ flex: 1, minHeight: '120px', fontSize: '0.9rem', color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>
             {generatedText || <span style={{ color: 'var(--text-dim)' }}>Click "Generate Tokens" to sample text output from the model...</span>}
           </div>
         </div>

@@ -35,7 +35,7 @@ const Section: React.FC<{
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span
           className="font-mono"
-          style={{ width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, background: 'var(--primary)', color: '#fff' }}
+          style={{ width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, background: 'var(--primary)', color: '#ffffff' }}
         >
           {step}
         </span>
@@ -76,7 +76,7 @@ const SliderRow: React.FC<{
 );
 
 const Stat: React.FC<{ label: string; value: string; color: string; hint?: string }> = ({ label, value, color, hint }) => (
-  <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: 12, borderRadius: 8, border: '1px solid var(--border-color)' }}>
+  <div style={{ background: 'var(--surface-inset)', padding: 12, borderRadius: 8, border: '1px solid var(--border-color)' }}>
     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{label}</p>
     <p className="font-mono" style={{ fontSize: '1.3rem', fontWeight: 700, color }}>{value}</p>
     {hint && <p style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>{hint}</p>}
@@ -84,7 +84,7 @@ const Stat: React.FC<{ label: string; value: string; color: string; hint?: strin
 );
 
 const BreakdownRow: React.FC<{ label: string; value: number }> = ({ label, value }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(15, 23, 42, 0.5)', borderRadius: 6, fontSize: '0.85rem' }}>
+  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface-inset)', borderRadius: 6, fontSize: '0.85rem' }}>
     <span style={{ color: 'var(--text-muted)' }}>{label}</span>
     <span className="font-mono" style={{ fontWeight: 600 }}>{value.toLocaleString()}</span>
   </div>
@@ -174,7 +174,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
           </div>
 
           {isCreatingCustom && (
-            <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: 16, borderRadius: 10, border: '1px solid var(--primary)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ background: 'var(--surface-inset)', padding: 16, borderRadius: 10, border: '1px solid var(--primary)', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div>
                 <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Dataset Title</label>
                 <input type="text" value={customTitle} onChange={e => setCustomTitle(e.target.value)} style={{ width: '100%', marginTop: 4, fontSize: '0.85rem' }} />
@@ -201,10 +201,10 @@ export const SetupView: React.FC<SetupViewProps> = ({
                     padding: 14,
                     borderRadius: 10,
                     border: '1px solid ' + (isCurrent ? 'var(--primary)' : 'var(--border-color)'),
-                    background: isCurrent ? 'rgba(99, 102, 241, 0.18)' : 'rgba(15, 23, 42, 0.5)',
+                    background: isCurrent ? 'var(--primary-soft)' : 'var(--surface-inset)',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
-                    boxShadow: isCurrent ? '0 4px 16px rgba(99, 102, 241, 0.3)' : 'none',
+                    boxShadow: 'none',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -233,7 +233,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
                 maxHeight: 360,
                 overflowY: 'auto',
                 padding: 16,
-                background: 'rgba(9, 13, 22, 0.9)',
+                background: 'var(--bg)',
                 border: '1px solid var(--border-color)',
                 borderRadius: 10,
                 fontSize: '0.82rem',
@@ -426,8 +426,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%)',
-            border: '1px solid rgba(99, 102, 241, 0.4)',
+            background: 'var(--surface-inset)',
+            border: '1px solid var(--border-color)',
             borderRadius: 12,
             padding: 20,
             textAlign: 'center',
@@ -435,7 +435,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
           }}
         >
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Trainable Weights</p>
-          <p className="font-mono" style={{ fontSize: '2.2rem', fontWeight: 800, color: '#ffffff', margin: '4px 0' }}>
+          <p className="font-mono" style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-main)', margin: '4px 0' }}>
             {paramCount.toLocaleString()}
           </p>
           <p style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>Micro-Transformer Architecture (Nano Scale)</p>

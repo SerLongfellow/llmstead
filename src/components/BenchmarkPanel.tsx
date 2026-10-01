@@ -87,7 +87,7 @@ export const BenchmarkPanel: React.FC<BenchmarkPanelProps> = ({
               const sc = result.bySplit[split];
               const st = SPLIT_STYLE[split];
               return (
-                <div key={split} style={{ padding: '14px 16px', borderRadius: '10px', background: 'rgba(15, 23, 42, 0.5)', border: `1px solid ${st.color}` }}>
+                <div key={split} style={{ padding: '14px 16px', borderRadius: '10px', background: 'var(--surface-inset)', border: `1px solid ${st.color}` }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{st.label}</p>
                   <p className="font-mono" style={{ fontSize: '1.6rem', fontWeight: 800, color: st.color }}>
                     {sc.total === 0 ? '—' : `${sc.accuracy.toFixed(0)}%`}

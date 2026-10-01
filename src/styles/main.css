@@ -1,25 +1,41 @@
-/* Global Styles & Glassmorphism Theme System */
+/* Global styles: flat neutral dark theme.
+ * Canvas/SVG drawing can't read these variables, so src/styles/theme.ts mirrors the
+ * colors for JS. Keep the two in sync. */
 :root {
-  --bg-dark: #090d16;
-  --bg-card: rgba(15, 23, 42, 0.75);
-  --bg-card-hover: rgba(30, 41, 59, 0.85);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-glow: rgba(99, 102, 241, 0.3);
-  
-  --primary: #6366f1;
-  --primary-hover: #4f46e5;
-  --primary-light: rgba(99, 102, 241, 0.15);
-  
-  --accent-cyan: #06b6d4;
-  --accent-emerald: #10b981;
-  --accent-amber: #f59e0b;
-  --accent-purple: #a855f7;
-  --accent-rose: #f43f5e;
-  
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
-  
+  /* Surfaces, darkest to lightest */
+  --bg: #0d1117;              /* page background */
+  --surface-inset: #0d1117;   /* wells inside panels: inputs, code, chips, stat boxes */
+  --bg-card: #161b22;         /* panels */
+  --bg-card-hover: #21262d;   /* hovered controls */
+  --border-color: #30363d;
+  --border-strong: #484f58;
+
+  --text-main: #e6edf3;
+  --text-muted: #9198a1;
+  --text-dim: #6e7681;
+
+  --primary: #2f81f7;
+  --primary-hover: #1f6feb;
+
+  --accent-cyan: #39c5cf;
+  --accent-emerald: #3fb950;
+  --accent-amber: #d29922;
+  --accent-purple: #a371f7;
+  --accent-rose: #f85149;
+
+  /* Soft tints for selected states and highlights */
+  --primary-soft: color-mix(in srgb, var(--primary) 15%, transparent);
+  --primary-tint: color-mix(in srgb, var(--primary) 30%, transparent);
+  --amber-soft: color-mix(in srgb, var(--accent-amber) 15%, transparent);
+  --amber-tint: color-mix(in srgb, var(--accent-amber) 28%, transparent);
+  --emerald-soft: color-mix(in srgb, var(--accent-emerald) 14%, transparent);
+  --emerald-tint: color-mix(in srgb, var(--accent-emerald) 30%, transparent);
+
+  /* Older names, kept so existing var() references still resolve */
+  --bg-dark: var(--bg);
+  --border-glow: var(--border-strong);
+  --primary-light: var(--primary-soft);
+
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
@@ -31,62 +47,35 @@
 }
 
 body {
-  background-color: var(--bg-dark);
+  background-color: var(--bg);
   color: var(--text-main);
   font-family: var(--font-sans);
   min-height: 100vh;
   line-height: 1.5;
   overflow-x: hidden;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.1) 0px, transparent 50%),
-    radial-gradient(at 50% 50%, rgba(6, 182, 212, 0.05) 0px, transparent 50%);
-  background-attachment: fixed;
 }
 
-/* Custom Scrollbar */
+/* Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
+  background: var(--border-color);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.6);
+  background: var(--border-strong);
 }
 
-/* Glassmorphism Cards */
+/* Panels (the class name is historical; panels are flat now) */
 .glass-panel {
-  background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  transition: all 0.2s ease-in-out;
-}
-
-.glass-panel:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.glass-card-interactive {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  padding: 16px;
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.glass-card-interactive:hover {
-  transform: translateY(-2px);
-  border-color: var(--primary);
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.2);
 }
 
 /* Font helpers */
@@ -94,85 +83,86 @@ body {
   font-family: var(--font-mono);
 }
 
-/* Custom Badges */
+/* Badges */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   border-radius: 9999px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .badge-primary {
-  background: rgba(99, 102, 241, 0.15);
-  color: #818cf8;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  background: var(--primary-soft);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
 }
 
 .badge-emerald {
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: var(--emerald-soft);
+  color: var(--accent-emerald);
+  border: 1px solid color-mix(in srgb, var(--accent-emerald) 40%, transparent);
 }
 
 .badge-amber {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: var(--amber-soft);
+  color: var(--accent-amber);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 40%, transparent);
 }
 
 .badge-purple {
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.3);
+  background: color-mix(in srgb, var(--accent-purple) 15%, transparent);
+  color: var(--accent-purple);
+  border: 1px solid color-mix(in srgb, var(--accent-purple) 40%, transparent);
 }
 
 /* Buttons */
-.btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, #4338ca 100%);
-  color: #ffffff;
+.btn-primary,
+.btn-secondary {
   font-weight: 600;
-  padding: 10px 18px;
-  border-radius: 8px;
-  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+  font-size: 0.875rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #ffffff;
+  border: 1px solid var(--primary);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
-  transform: translateY(-1px);
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
 }
 
 .btn-secondary {
-  background: rgba(30, 41, 59, 0.8);
+  background: var(--bg-card-hover);
   color: var(--text-main);
   font-weight: 500;
-  padding: 10px 18px;
-  border-radius: 8px;
   border: 1px solid var(--border-color);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: all 0.2s ease;
 }
 
 .btn-secondary:hover {
-  background: rgba(51, 65, 85, 0.9);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--bg-card-hover) 80%, var(--text-main) 6%);
 }
 
-/* Inputs & Sliders */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Inputs & sliders */
 input[type="range"] {
   accent-color: var(--primary);
   width: 100%;
@@ -180,32 +170,31 @@ input[type="range"] {
 }
 
 input[type="text"], textarea, select {
-  background: rgba(15, 23, 42, 0.8);
+  background: var(--surface-inset);
   border: 1px solid var(--border-color);
   color: var(--text-main);
   padding: 8px 12px;
   border-radius: 6px;
   font-family: inherit;
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.15s ease;
 }
 
 input[type="text"]:focus, textarea:focus, select:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
-/* Attention Heatmap Grid Cell */
+/* Attention heatmap grid cell */
 .heatmap-cell {
   position: relative;
-  transition: transform 0.15s ease, filter 0.15s ease;
+  transition: outline-color 0.1s ease;
   cursor: pointer;
   border-radius: 2px;
+  outline: 2px solid transparent;
 }
 
 .heatmap-cell:hover {
-  transform: scale(1.15);
+  outline-color: var(--text-main);
   z-index: 10;
-  filter: brightness(1.2);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
 }

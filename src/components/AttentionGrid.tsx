@@ -1,15 +1,10 @@
 import React, { useState } from 'react';
 import { Eye, Lock } from 'lucide-react';
 
-// Heatmap color generator (0.0 -> dark, 1.0 -> vivid magenta/cyan)
+// Heatmap color: blends from the panel color (weight 0) to the primary blue (weight 1)
 const getCellBg = (val: number, isMasked: boolean) => {
-  if (isMasked) return 'rgba(15, 23, 42, 0.9)';
-
-  // Smooth HSL color scale from dark indigo (240deg) to glowing cyan/pink (320deg)
-  const hue = 240 + val * 80;
-  const lightness = 15 + val * 55;
-  const alpha = 0.3 + val * 0.7;
-  return `hsla(${hue}, 90%, ${lightness}%, ${alpha})`;
+  if (isMasked) return 'var(--surface-inset)';
+  return `color-mix(in srgb, var(--primary) ${Math.round(8 + val * 92)}%, var(--bg-card-hover))`;
 };
 
 interface AttentionGridProps {
@@ -79,9 +74,9 @@ export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, toke
                           textAlign: 'center',
                           verticalAlign: 'middle',
                           background: getCellBg(val, isMasked),
-                          border: isHighlighted ? '1px solid var(--accent-amber)' : '1px solid rgba(255, 255, 255, 0.08)',
+                          border: isHighlighted ? '1px solid var(--accent-amber)' : '1px solid var(--border-color)',
                           borderRadius: '6px',
-                          color: '#ffffff',
+                          color: 'var(--text-main)',
                           fontSize: '0.75rem',
                           fontFamily: 'var(--font-mono)'
                         }}
@@ -111,14 +106,14 @@ export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, toke
 
           {hoveredCell ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-glow)' }}>
+              <div style={{ background: 'var(--surface-inset)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-glow)' }}>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Query Token (Target Position {hoveredCell.row})</p>
                 <p className="font-mono" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--accent-cyan)', whiteSpace: 'pre' }}>
                   "{tokenStrings[hoveredCell.row]}"
                 </p>
               </div>
 
-              <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-glow)' }}>
+              <div style={{ background: 'var(--surface-inset)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-glow)' }}>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Key Token (Attended Position {hoveredCell.col})</p>
                 <p className="font-mono" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--accent-emerald)', whiteSpace: 'pre' }}>
                   "{tokenStrings[hoveredCell.col]}"
@@ -126,14 +121,14 @@ export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, toke
               </div>
 
               <div style={{
-                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(168, 85, 247, 0.25) 100%)',
+                background: 'var(--primary-soft)',
                 padding: '20px',
                 borderRadius: '12px',
                 border: '1px solid var(--primary)',
                 textAlign: 'center'
               }}>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Attention Score Weight (Softmax)</p>
-                <p className="font-mono" style={{ fontSize: '2rem', fontWeight: 800, color: '#ffffff', margin: '4px 0' }}>
+                <p className="font-mono" style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', margin: '4px 0' }}>
                   {(hoveredCell.val * 100).toFixed(1)}%
                 </p>
                 <p style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>
@@ -142,13 +137,13 @@ export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, toke
               </div>
             </div>
           ) : (
-            <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '10px', border: '1px dashed var(--border-color)' }}>
+            <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', background: 'var(--surface-inset)', borderRadius: '10px', border: '1px dashed var(--border-color)' }}>
               <p style={{ fontSize: '0.85rem' }}>Hover over any cell in the matrix grid to inspect token-to-token attention weight scores.</p>
             </div>
           )}
         </div>
 
-        <div style={{ padding: '12px', background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+        <div style={{ padding: '12px', background: 'var(--primary-soft)', border: '1px solid var(--primary-soft)', borderRadius: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
           <p>💡 <strong>Causal Masking</strong> ensures position i can only attend to previous positions j ≤ i. This enforces autoregressive left-to-right text generation!</p>
         </div>
       </div>

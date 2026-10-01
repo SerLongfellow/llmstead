@@ -33,7 +33,7 @@ export const TokenChip: React.FC<{ text: string; active?: boolean; onClick?: () 
       cursor: onClick ? 'pointer' : 'default',
       whiteSpace: 'pre',
       color: 'var(--text-main)',
-      background: bg ?? (active ? 'rgba(245, 158, 11, 0.25)' : 'rgba(16, 185, 129, 0.12)'),
+      background: bg ?? (active ? 'var(--amber-tint)' : 'var(--emerald-soft)'),
       border: `1px solid ${active ? 'var(--accent-amber)' : 'transparent'}`,
     }}
   >
