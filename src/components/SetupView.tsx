@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DatasetOption, TransformerConfig } from '../types';
 import { BPETokenizer } from '../engine/bpeTokenizer';
 import { BookOpen, Binary, Sliders, Info, Plus, ChevronRight, Ruler } from 'lucide-react';
@@ -110,6 +110,18 @@ export const SetupView: React.FC<SetupViewProps> = ({
 }) => {
   // Custom dataset form
   const [isCreatingCustom, setIsCreatingCustom] = useState<boolean>(false);
+  // The vocab slider shows its value immediately but applies it a moment after you stop
+  // dragging: each new value retrains the tokenizer and rebuilds the model.
+  const [vocabDraft, setVocabDraft] = useState<number>(targetVocabSize);
+  const vocabTimer = useRef<number>();
+  useEffect(() => setVocabDraft(targetVocabSize), [targetVocabSize]);
+  useEffect(() => () => window.clearTimeout(vocabTimer.current), []);
+  const changeVocabDraft = (v: number) => {
+    setVocabDraft(v);
+    window.clearTimeout(vocabTimer.current);
+    vocabTimer.current = window.setTimeout(() => onChangeVocabSize(v), 250);
+  };
+
   const [customTitle, setCustomTitle] = useState<string>('My Custom Dataset');
   const [customText, setCustomText] = useState<string>(
     'Artificial Intelligence and Machine Learning models predict tokens based on probability distributions learned during pre-training.'
@@ -148,7 +160,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
   const text = selectedDataset.text;
   const charCount = text.length;
   const wordCount = text.trim().split(/\s+/).length;
-  const tokenCount = tokenizer.encode(text).tokens.length;
+  const tokenCount = useMemo(() => tokenizer.encode(text).tokens.length, [tokenizer, text]);
   const compressionRatio = (charCount / Math.max(tokenCount, 1)).toFixed(2);
 
   const dMlp = config.dModel * config.mlpRatio;
@@ -262,13 +274,13 @@ export const SetupView: React.FC<SetupViewProps> = ({
               description: 'How many distinct tokens the BPE tokenizer learns from the dataset: every single character, plus merged character runs until it reaches this size.',
               impact: 'Sets the rows of the embedding table and the columns of the output head. Bigger vocabularies mean fewer tokens per sentence but more parameters. The tokenizer is fixed before training, so changing this builds a new tokenizer and a fresh model.',
             }}
-            valueLabel={<>{config.vocabSize}{config.vocabSize < targetVocabSize ? ` / ${targetVocabSize} target` : ''}</>}
+            valueLabel={vocabDraft !== targetVocabSize ? <>{vocabDraft}…</> : <>{config.vocabSize}{config.vocabSize < targetVocabSize ? ` / ${targetVocabSize} target` : ''}</>}
             color="var(--accent-rose)"
             min={50}
             max={300}
             step={10}
-            value={targetVocabSize}
-            onChange={onChangeVocabSize}
+            value={vocabDraft}
+            onChange={changeVocabDraft}
             hint={config.vocabSize < targetVocabSize ? 'BPE ran out of repeated pairs before reaching the target' : 'Single characters plus the merges BPE learned from the dataset'}
           />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

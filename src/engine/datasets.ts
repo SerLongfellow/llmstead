@@ -20,11 +20,135 @@ function shuffle<T>(items: T[], rand: () => number): T[] {
 }
 
 /**
+ * Python dataset: the hand-written snippets, then templated variations (functions, loops,
+ * conditionals) with a fixed shuffle. The templates never produce the benchmark's held-out
+ * cases: no `subtract` function, no loop over `j`, and no conditionals on a variable `y`.
+ */
+function buildCodeText(handwritten: string): string {
+  const rand = seededRandom(7);
+  const pick = <T,>(items: T[]) => items[Math.floor(rand() * items.length)];
+  const snippets: string[] = [];
+
+  const binary: [string, string][] = [
+    ['add_numbers', '+'], ['plus', '+'], ['sum_two', '+'], ['combine', '+'], ['times', '*'], ['product', '*'],
+    ['scale', '*'], ['minus', '-'], ['difference', '-'], ['quotient', '/'], ['ratio', '/'], ['remainder', '%'],
+    ['floor_div', '//'], ['raise_to', '**'],
+  ];
+  const argPairs: [string, string][] = [['a', 'b'], ['x', 'z'], ['m', 'n'], ['left', 'right'], ['first', 'second']];
+  for (const [name, op] of binary) {
+    for (const [p, q] of shuffle(argPairs, rand).slice(0, 2)) {
+      snippets.push(`def ${name}(${p}, ${q}):\n    return ${p} ${op} ${q}`);
+    }
+  }
+
+  const unary: [string, string][] = [
+    ['add_one', '+ 1'], ['add_two', '+ 2'], ['add_ten', '+ 10'], ['minus_one', '- 1'], ['triple', '* 3'],
+    ['quadruple', '* 4'], ['tenfold', '* 10'], ['third', '/ 3'], ['halve', '/ 2'], ['squared', '** 2'], ['last_digit', '% 10'],
+  ];
+  for (const [name, rest] of unary) {
+    const v = pick(['x', 'n', 'value', 'num']);
+    snippets.push(`def ${name}(${v}):\n    return ${v} ${rest}`);
+  }
+
+  const loopVars = ['i', 'k', 'n', 'x', 'idx', 'step'];
+  for (let t = 0; t < 30; t++) {
+    const v = pick(loopVars);
+    const expr = pick([v, `${v} * 2`, `${v} + 1`, `${v} * ${v}`, `${v} - 1`, '"hi"', '"tick"']);
+    snippets.push(`for ${v} in range(${1 + Math.floor(rand() * 12)}):\n    print(${expr})`);
+  }
+
+  const condVars = ['x', 'n', 'a', 'b', 'count', 'score', 'total', 'speed', 'level', 'size', 'price'];
+  const labels: [string, string][] = [['Big', 'Small'], ['High', 'Low'], ['Yes', 'No'], ['Pass', 'Fail'], ['Many', 'Few'], ['Over', 'Under']];
+  for (let t = 0; t < 28; t++) {
+    const v = pick(condVars);
+    const [hi, lo] = pick(labels);
+    const threshold = Math.floor(rand() * 50);
+    const value = Math.floor(rand() * 100);
+    snippets.push(`${v} = ${value}\nif ${v} > ${threshold}:\n    print("${hi}")\nelse:\n    print("${lo}")`);
+  }
+
+  for (let t = 0; t < 10; t++) {
+    const v = pick(['count', 'i', 'k', 'tries', 'steps']);
+    snippets.push(`${v} = 0\nwhile ${v} < ${2 + Math.floor(rand() * 8)}:\n    print(${v})\n    ${v} = ${v} + 1`);
+  }
+
+  const lists: [string, string, string][] = [
+    ['fruits', 'fruit', '["apple", "pear", "plum"]'], ['colors', 'color', '["red", "green", "blue"]'],
+    ['pets', 'pet', '["cat", "dog", "fish"]'], ['nums', 'num', '[3, 1, 4, 1, 5]'], ['words', 'word', '["one", "two", "three"]'],
+    ['primes', 'p', '[2, 3, 5, 7, 11]'],
+  ];
+  for (const [list, item, values] of lists) {
+    snippets.push(`${list} = ${values}\nfor ${item} in ${list}:\n    print(${item})`);
+  }
+
+  return handwritten + '\n\n' + shuffle(snippets, rand).join('\n\n');
+}
+
+/**
+ * Q&A dataset: the hand-written turns, then generated ones: every "What is X?" definition
+ * asked a second way, extra definitions, and more greetings and thanks. Nothing generated
+ * asks "What is a token?" or greets with "Hi!" (both held-out benchmark cases).
+ */
+function buildQaText(handwritten: string): string {
+  const rand = seededRandom(11);
+  const turns: string[] = [];
+  const turn = (q: string, a: string) => `User: ${q}\nAssistant: ${a}`;
+
+  const extraDefinitions: [string, string][] = [
+    ['an activation function', 'An activation function adds a nonlinear bend between layers, like GELU or ReLU.'],
+    ['GELU', 'GELU is a smooth activation function used in transformer MLPs.'],
+    ['a residual connection', "A residual connection adds a layer's input back to its output."],
+    ['layer normalization', 'Layer normalization rescales each vector to zero mean and unit variance.'],
+    ['a query', 'A query is the vector a token uses to look for relevant tokens.'],
+    ['a key', 'A key is the vector a token offers so that others can find it.'],
+    ['a value', 'A value is the information a token passes along when it is attended to.'],
+    ['a learning rate', 'A learning rate sets how big each weight update is.'],
+    ['a batch', 'A batch is a group of examples processed together in one step.'],
+    ['validation loss', 'Validation loss is the loss on text the model never trained on.'],
+    ['a hyperparameter', 'A hyperparameter is a setting chosen before training, like the learning rate.'],
+    ['AdamW', 'AdamW is an optimizer that adapts the step size for every weight.'],
+    ['greedy decoding', 'Greedy decoding always picks the most likely next token.'],
+    ['sampling', 'Sampling picks the next token at random, weighted by the probabilities.'],
+    ['perplexity', 'Perplexity is the exponential of the loss, roughly how many choices the model is torn between.'],
+    ['a merge', 'A merge combines two frequent neighbors into one new vocabulary entry.'],
+    ['BPE', 'BPE builds a vocabulary by repeatedly merging the most frequent pair.'],
+    ['a causal mask', 'A causal mask stops each position from looking at later positions.'],
+    ['positional encoding', 'Positional encoding tells the model where each position sits in the sequence.'],
+    ['inference', 'Inference is running a trained model to make predictions.'],
+    ['RLHF', 'RLHF fine-tunes a model using human feedback on its answers.'],
+    ['a GPU', 'A GPU is a chip that does many calculations in parallel.'],
+    ['a probability', 'A probability is a number between zero and one.'],
+    ['an attention head', 'An attention head is one of several parallel attention units in a layer.'],
+  ];
+  const definitions: [string, string][] = [];
+  for (const m of handwritten.matchAll(/User: What is (.+)\?\nAssistant: (.+)/g)) definitions.push([m[1], m[2]]);
+  for (const [term, answer] of extraDefinitions) {
+    turns.push(turn(`What is ${term}?`, answer));
+    definitions.push([term, answer]);
+  }
+
+  // Ask every definition a second way
+  const phrasings = [(t: string) => `Can you explain ${t}?`, (t: string) => `Tell me about ${t}.`, (t: string) => `Define ${t}.`];
+  for (const [term, answer] of definitions) {
+    const ask = phrasings[Math.floor(rand() * phrasings.length)];
+    turns.push(turn(ask(term), answer));
+  }
+
+  const greetings = ['Hello there!', 'Hey there!', 'Good afternoon!', 'Good evening!', 'Howdy!', 'Greetings!', 'Yo!'];
+  const replies = ['Hi! What would you like to know?', 'Hi there! Ask me anything about language models.', 'Hi! How can I help?'];
+  greetings.forEach((g, i) => turns.push(turn(g, replies[i % replies.length])));
+  const thanks = ['Thanks a lot!', 'Thank you so much!', 'That helps, thanks!', 'Great, thank you!'];
+  thanks.forEach(t => turns.push(turn(t, "You're welcome!")));
+
+  return handwritten + '\n\n' + shuffle(turns, rand).join('\n\n');
+}
+
+/**
  * The math & logic dataset, generated rather than typed out. The original hand-written lines
  * come first (so the benchmark's "seen" cases stay in the training split); the rest are shuffled
- * with a fixed seed. Lines matching the benchmark's held-out cases are deliberately left out,
- * so those cases can only pass by generalizing: 2 + 1, 4 + 3 and 1 + 3 (commutativity),
- * the D → E rule chain, and cows.
+ * with a fixed seed. Anything matching the benchmark's held-out cases is deliberately left out,
+ * in every format, so those cases can only pass by generalizing: the sums 2 + 1, 4 + 3 and
+ * 1 + 3 (commutativity), the D → E rule chain, and cows.
  */
 function buildMathLogicText(): string {
   const intro = [
@@ -35,47 +159,85 @@ function buildMathLogicText(): string {
     'Cat is an animal. Animal has four legs. Cat has four legs.',
     'Dog is an animal. Animal has four legs. Dog has four legs.',
   ];
-  const excluded = new Set([...intro, '2 + 1 = 3', '4 + 3 = 7', '1 + 3 = 4']);
+  const introSet = new Set(intro);
+  const heldOutSum = (a: number, b: number) =>
+    (a === 2 && b === 1) || (a === 4 && b === 3) || (a === 1 && b === 3);
 
+  // Arithmetic
   const sums: string[] = [];
   for (let a = 0; a <= 9; a++) {
     for (let b = 0; b <= 9; b++) {
+      if (heldOutSum(a, b)) continue;
       const line = `${a} + ${b} = ${a + b}`;
-      if (!excluded.has(line)) sums.push(line);
+      if (!introSet.has(line)) sums.push(line);
+      sums.push(`What is ${a} plus ${b}? ${a + b}.`);
     }
   }
-
+  for (let a = 10; a <= 39; a++) {
+    for (let b = 1; b <= 9; b++) {
+      sums.push(`${a} + ${b} = ${a + b}`);
+      if (a < 20) sums.push(`${b} + ${a} = ${a + b}`); // both orders, so order-independence is visible
+    }
+  }
+  const differences: string[] = [];
+  for (let a = 0; a <= 18; a++) {
+    for (let b = Math.max(0, a - 9); b <= Math.min(a, 9); b++) {
+      differences.push(`${a} - ${b} = ${a - b}`);
+      if (a <= 9) differences.push(`What is ${a} minus ${b}? ${a - b}.`);
+    }
+  }
   const comparisons: string[] = [];
   for (let a = 0; a <= 9; a++) {
     for (let b = 0; b <= 9; b++) {
-      if (a > b && (a + b) % 3 === 0) comparisons.push(`${a} is greater than ${b}.`);
-      if (a < b && (a + b) % 3 === 1) comparisons.push(`${a} is less than ${b}.`);
+      if (a > b) comparisons.push(`${a} is greater than ${b}.`);
+      if (a < b) comparisons.push(`${a} is less than ${b}.`);
     }
   }
+  const parity: string[] = [];
+  for (let n = 0; n <= 30; n++) parity.push(`${n} is ${n % 2 === 0 ? 'even' : 'odd'}.`);
 
+  // Logic: one-step and two-step rule chains, skipping anything with D → E
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const rules: string[] = [];
+  const usesHeldOut = (...pairs: [string, string][]) => pairs.some(([p, q]) => p === 'D' && q === 'E');
   for (let i = 0; i < letters.length - 1; i++) {
     const [p, q] = [letters[i], letters[i + 1]];
     const line = `If ${p} then ${q}. ${p} is true. Therefore ${q}.`;
-    if (p !== 'D' && !excluded.has(line)) rules.push(line); // D → E is held out
+    if (!usesHeldOut([p, q]) && !introSet.has(line)) rules.push(line);
   }
-  for (let i = 0; i < letters.length - 3; i += 2) {
+  for (let i = 0; i < letters.length - 3; i++) {
     const [p, q] = [letters[i], letters[i + 3]];
-    if (p !== 'D') rules.push(`If ${p} then ${q}. ${p} is true. Therefore ${q}.`);
+    if (!usesHeldOut([p, q])) rules.push(`If ${p} then ${q}. ${p} is true. Therefore ${q}.`);
+  }
+  for (let i = 0; i < letters.length - 2; i++) {
+    const [p, q, r] = [letters[i], letters[i + 1], letters[i + 2]];
+    if (!usesHeldOut([p, q], [q, r])) rules.push(`If ${p} then ${q}. If ${q} then ${r}. ${p} is true. Therefore ${r}.`);
   }
 
-  const legged = ['Horse', 'Lion', 'Tiger', 'Sheep', 'Goat', 'Pig', 'Bear', 'Wolf', 'Fox', 'Rabbit', 'Mouse', 'Deer', 'Zebra', 'Camel'];
-  const birds = ['Robin', 'Eagle', 'Owl', 'Duck', 'Crow', 'Parrot', 'Swan', 'Hawk'];
-  const fish = ['Salmon', 'Trout', 'Shark', 'Tuna', 'Cod'];
+  // Category facts (no cows: "Cow" is a held-out benchmark case)
+  const mammals = ['Horse', 'Lion', 'Tiger', 'Sheep', 'Goat', 'Pig', 'Bear', 'Wolf', 'Fox', 'Rabbit', 'Mouse', 'Deer', 'Zebra',
+    'Camel', 'Elephant', 'Giraffe', 'Hippo', 'Rhino', 'Moose', 'Donkey', 'Llama', 'Panda', 'Leopard', 'Cheetah', 'Hamster',
+    'Squirrel', 'Otter', 'Badger', 'Raccoon', 'Bison', 'Yak'];
+  const birds = ['Robin', 'Eagle', 'Owl', 'Duck', 'Crow', 'Parrot', 'Swan', 'Hawk', 'Sparrow', 'Pigeon', 'Goose', 'Falcon', 'Heron', 'Finch'];
+  const fish = ['Salmon', 'Trout', 'Shark', 'Tuna', 'Cod', 'Carp', 'Bass', 'Pike', 'Herring', 'Perch'];
+  const reptiles = ['Snake', 'Lizard', 'Crocodile', 'Turtle', 'Iguana', 'Gecko'];
+  const insects = ['Ant', 'Bee', 'Beetle', 'Wasp', 'Moth', 'Fly', 'Cricket', 'Grasshopper'];
   const facts = [
-    ...legged.map(x => `${x} is an animal. Animal has four legs. ${x} has four legs.`),
+    ...mammals.map(x => `${x} is an animal. Animal has four legs. ${x} has four legs.`),
     ...birds.map(x => `${x} is a bird. Bird has wings. ${x} has wings.`),
     ...fish.map(x => `${x} is a fish. Fish has fins. ${x} has fins.`),
+    ...reptiles.map(x => `${x} is a reptile. Reptile has scales. ${x} has scales.`),
+    ...insects.map(x => `${x} is an insect. Insect has six legs. ${x} has six legs.`),
   ];
 
+  // Final safety net: drop any line that merely *contains* a held-out case, e.g. "32 + 1 = 33"
+  // contains "2 + 1 = 3" (the benchmark's seen/held-out check matches substrings too).
+  const HELD_OUT = ['2 + 1 = 3', '4 + 3 = 7', '1 + 3 = 4', 'If D then E', 'Cow'];
+  const generated = [...sums, ...differences, ...comparisons, ...parity, ...rules, ...facts]
+    .filter(line => !HELD_OUT.some(h => line.includes(h)));
+
   const rand = seededRandom(42);
-  return [...intro, ...shuffle([...sums, ...comparisons, ...rules, ...facts], rand)].join('\n');
+  return [...intro, ...shuffle(generated, rand)].join('\n');
 }
 
 export const SAMPLE_DATASETS: DatasetOption[] = [
@@ -393,7 +555,7 @@ He'll beat Aufidius' head below his knee And tread upon his neck.`
     samplePrompt: 'def add(a, b):\n    ',
     category: 'code',
     description: 'Short Python functions, loops, conditionals and classes for learning code structure.',
-    text: `def add(a, b):
+    text: buildCodeText(`def add(a, b):
     return a + b
 
 def multiply(a, b):
@@ -597,7 +759,7 @@ m = 12
 if m > 10:
     print("Double digits")
 else:
-    print("Single digit")`
+    print("Single digit")`),
   },
   {
     id: 'qa-dialogue',
@@ -605,7 +767,7 @@ else:
     samplePrompt: 'User: What is attention?\nAssistant: ',
     category: 'synthetic',
     description: 'User/Assistant turns: greetings plus short definitions of ML terms.',
-    text: `User: Hello!
+    text: buildQaText(`User: Hello!
 Assistant: Hi there! How can I help you today?
 
 User: What is an LLM?
@@ -714,7 +876,7 @@ User: What is a logit?
 Assistant: A logit is a raw score for a token before softmax.
 
 User: Goodbye!
-Assistant: Goodbye! Have a great day.`
+Assistant: Goodbye! Have a great day.`),
   }
 ];
 
