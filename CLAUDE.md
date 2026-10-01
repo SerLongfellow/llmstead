@@ -5,6 +5,14 @@ Local React + Vite + TypeScript site for learning how LLMs work: train a tiny tr
 ## Commands
 - `npm run dev` — dev server
 - `npm run build` — `tsc && vite build` (output in `dist/`, which is stale; rebuild)
+- `npm run gradcheck` — finite-difference check of the backprop
+
+## Deployment
+**Every push to `main` goes live at https://llmstead.com** (usually within a minute or two), so treat a push as a publish.
+- Hosted as a Cloudflare Worker named `llmstead` (static assets), built by Cloudflare Workers Builds from this GitHub repo. Build status shows up as a "Workers Builds: llmstead" check on each commit.
+- Build settings live in the Cloudflare dashboard (there is no Wrangler config in the repo). `.nvmrc` pins Node 22 for the build.
+- `www.llmstead.com` is attached to the Worker too, and a zone Redirect Rule 301-redirects it to `https://llmstead.com` (keeps path and query).
+- The site is fully static, so there are no server costs or secrets; the only recurring cost is the domain.
 
 ## Layout
 - `src/engine/` — hand-written, dependency-free ML code (intentional: it's meant to be read)
