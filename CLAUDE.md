@@ -13,6 +13,7 @@ Local React + Vite + TypeScript site for learning how LLMs work: train a tiny tr
 - Build settings live in the Cloudflare dashboard (there is no Wrangler config in the repo). `.nvmrc` pins Node 22 for the build.
 - `www.llmstead.com` is attached to the Worker too, and a zone Redirect Rule 301-redirects it to `https://llmstead.com` (keeps path and query).
 - The site is fully static, so there are no server costs or secrets; the only recurring cost is the domain.
+- SEO / link previews: `index.html` has the meta description, canonical URL, Open Graph + Twitter tags, and a plain-text summary inside `#root` for crawlers without JavaScript (React replaces it on mount). `public/` holds `robots.txt`, `sitemap.xml` and `og-image.png` (1200×630, rendered from an HTML mockup with headless Edge). The Worker serves the app for unknown paths with a 200 (SPA fallback), so missing files don't 404.
 
 ## Layout
 - `src/engine/` — hand-written, dependency-free ML code (intentional: it's meant to be read)
