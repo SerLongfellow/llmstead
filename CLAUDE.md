@@ -1,4 +1,4 @@
-# LLM Breakdown
+# LLMStead
 
 Local React + Vite + TypeScript site for learning how LLMs work: train a tiny transformer from scratch in the browser and inspect every step. Long-term goal: a detailed tutorial covering the pipeline from tokenization → training → fine-tuning/RLHF → benchmarks.
 

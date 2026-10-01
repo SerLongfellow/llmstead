@@ -38,10 +38,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(to right, #ffffff, #c7d2fe)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              LLM Breakdown
+              LLMStead
             </h1>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Interactive Lifecycle & Attention Visualizer
+              Raise your own models
             </p>
           </div>
         </div>

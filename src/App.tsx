@@ -140,7 +140,7 @@ export default function App() {
       </main>
 
       <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-        <p>LLM Breakdown • Visualizing Small Language Models & Attention Mechanics from Scratch</p>
+        <p>LLMStead • Raise your own models: a tiny transformer, built and trained from scratch in your browser</p>
       </footer>
     </div>
   );
