@@ -239,7 +239,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 480px), 1fr))', gap: '20px' }}>
       {/* Left Column: Dataset & Loss Chart */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* What's being trained on (chosen in Setup, since changing it resets the model) */}
