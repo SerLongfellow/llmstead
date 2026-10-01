@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DatasetOption, TransformerConfig } from '../types';
 import { MicroTransformer } from '../engine/transformer';
 import { BPETokenizer } from '../engine/bpeTokenizer';
-import { splitDataset, VALIDATION_FRACTION } from '../engine/datasets';
+import { splitDataset, samplePromptFor, VALIDATION_FRACTION } from '../engine/datasets';
 import { generateContinuation } from '../engine/generate';
 import { Play, Pause, RotateCcw, FastForward, Activity, Sparkles, BookOpen } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
@@ -41,6 +41,8 @@ interface TrainingDashboardProps {
   selectedDataset: DatasetOption;
   onNavigateToSetup: () => void;
   onTrainingChange?: (isTraining: boolean) => void;
+  onChangeLearningRate: (lr: number) => void;
+  onChangeOptimizer: (opt: TransformerConfig['optimizer']) => void;
 }
 
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
@@ -50,6 +52,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   selectedDataset,
   onNavigateToSetup,
   onTrainingChange,
+  onChangeLearningRate,
+  onChangeOptimizer,
 }) => {
   const [isTraining, setIsTraining] = useState<boolean>(false);
   useEffect(() => {
@@ -62,10 +66,15 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   const [stepLabels, setStepLabels] = useState<string[]>([]);
   
   // Sampling controls
-  const [seedPrompt, setSeedPrompt] = useState<string>('FIRST CITIZEN:');
+  const [seedPrompt, setSeedPrompt] = useState<string>(() => samplePromptFor(selectedDataset));
   const [temperature, setTemperature] = useState<number>(0.7);
   const [maxGenTokens, setMaxGenTokens] = useState<number>(40);
   const [generatedText, setGeneratedText] = useState<string>('');
+  // New dataset, new example prompt
+  useEffect(() => {
+    setSeedPrompt(samplePromptFor(selectedDataset));
+    setGeneratedText('');
+  }, [selectedDataset]);
 
   // Train on the first part of the dataset; hold out the tail to measure generalization
   const split = useMemo(() => splitDataset(selectedDataset.text), [selectedDataset]);
@@ -291,6 +300,53 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
             >
               <RotateCcw size={16} /> Reset
             </button>
+          </div>
+
+          {/* Settings that are safe to change while training runs */}
+          <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '16px', padding: '12px 14px', borderRadius: '8px', background: 'var(--surface-inset)', border: '1px solid var(--border-color)' }}>
+            <div style={{ flex: '1 1 220px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Learning rate</label>
+                  <InfoTooltip
+                    title="Learning Rate"
+                    description="How big a step each weight takes on every update. Safe to change while training: the weights are kept."
+                    impact="Too high and the loss jumps around or explodes; too low and learning crawls. 0.001 works well with AdamW here."
+                  />
+                </div>
+                <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--accent-rose)' }}>{config.learningRate}</span>
+              </div>
+              <input
+                type="range"
+                min={0.001}
+                max={0.05}
+                step={0.001}
+                value={config.learningRate}
+                onChange={(e) => onChangeLearningRate(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Optimizer</label>
+                <InfoTooltip
+                  title="Optimizer"
+                  description="SGD steps every weight by lr × gradient. AdamW keeps running averages of each weight's gradient (momentum) and squared gradient, giving every weight its own adaptive step size, and applies weight decay separately from the gradient."
+                  impact="AdamW usually converges much faster on transformers. Switching resets AdamW's running averages but keeps the learned weights."
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {(['adamw', 'sgd'] as const).map(opt => (
+                  <button
+                    key={opt}
+                    className={config.optimizer === opt ? 'btn-primary' : 'btn-secondary'}
+                    style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+                    onClick={() => onChangeOptimizer(opt)}
+                  >
+                    {opt === 'adamw' ? 'AdamW' : 'SGD'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div style={{ height: '260px', width: '100%' }}>

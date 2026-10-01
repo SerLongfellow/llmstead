@@ -5,8 +5,6 @@ import { ChickenLogo } from './ChickenLogo';
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  paramCount: number;
-  datasetName: string;
   isTraining: boolean;
 }
 
@@ -21,8 +19,6 @@ export const TABS = [
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
-  paramCount,
-  datasetName,
   isTraining,
 }) => {
   const tabs = TABS;
@@ -108,16 +104,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             );
           })}
         </nav>
-
-        {/* Status Badges */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div className="badge badge-purple" style={{ fontFamily: 'var(--font-mono)' }}>
-            Dataset: {datasetName}
-          </div>
-          <div className="badge badge-primary" style={{ fontFamily: 'var(--font-mono)' }}>
-            {paramCount.toLocaleString()} Params
-          </div>
-        </div>
       </div>
     </header>
   );

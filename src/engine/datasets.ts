@@ -80,8 +80,17 @@ function buildMathLogicText(): string {
 
 export const SAMPLE_DATASETS: DatasetOption[] = [
   {
+    id: 'math-logic',
+    name: 'Synthetic Math & Logic',
+    samplePrompt: '3 + 4 = ',
+    category: 'logic',
+    description: 'Single-digit sums, if-then rule chains and category facts, generated so a few benchmark cases never appear.',
+    text: buildMathLogicText(),
+  },
+  {
     id: 'shakespeare',
     name: 'Tiny Shakespeare',
+    samplePrompt: 'FIRST CITIZEN:\n',
     category: 'literature',
     description: 'Coriolanus, Act 1 Scenes 1 and 3 (public domain) for learning archaic English vocabulary & rhythm.',
     text: `FIRST CITIZEN:
@@ -379,15 +388,9 @@ VOLUMNIA:
 He'll beat Aufidius' head below his knee And tread upon his neck.`
   },
   {
-    id: 'math-logic',
-    name: 'Synthetic Math & Logic',
-    category: 'logic',
-    description: 'Single-digit sums, if-then rule chains and category facts, generated so a few benchmark cases never appear.',
-    text: buildMathLogicText(),
-  },
-  {
     id: 'code-python',
     name: 'Python Micro Snippets',
+    samplePrompt: 'def add(a, b):\n    ',
     category: 'code',
     description: 'Short Python functions, loops, conditionals and classes for learning code structure.',
     text: `def add(a, b):
@@ -599,6 +602,7 @@ else:
   {
     id: 'qa-dialogue',
     name: 'Simple Q&A Conversations',
+    samplePrompt: 'User: What is attention?\nAssistant: ',
     category: 'synthetic',
     description: 'User/Assistant turns: greetings plus short definitions of ML terms.',
     text: `User: Hello!
@@ -713,6 +717,9 @@ User: Goodbye!
 Assistant: Goodbye! Have a great day.`
   }
 ];
+
+/** A dataset's example prompt; custom datasets fall back to the start of their first line */
+export const samplePromptFor = (ds: DatasetOption) => ds.samplePrompt ?? ds.text.split('\n')[0].slice(0, 30);
 
 /** Fraction of each dataset (by characters, snapped to a line break) held out from training. */
 export const VALIDATION_FRACTION = 0.15;

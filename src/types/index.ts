@@ -68,4 +68,6 @@ export interface DatasetOption {
   description: string;
   text: string;
   category: 'literature' | 'code' | 'synthetic' | 'logic';
+  /** A good example prompt: used as the default Pipeline input and generation seed */
+  samplePrompt?: string;
 }

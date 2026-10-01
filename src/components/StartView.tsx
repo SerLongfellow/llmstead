@@ -32,7 +32,7 @@ const STEPS = [
 const EXPERIMENTS = [
   {
     title: 'What does it learn first?',
-    text: 'Train Tiny Shakespeare for a couple of minutes, then run the benchmark. Simple, frequent patterns come first, like FIRST and SECOND being followed by CITIZEN.',
+    text: 'Train the math dataset (the default) for a couple of minutes, then run the benchmark. It gets sums it has seen, like 3 + 4 = 7, long before sums it has never seen, like 4 + 3. Memorizing comes before understanding.',
   },
   {
     title: 'Watch attention form',
@@ -56,7 +56,7 @@ export const StartView: React.FC<StartViewProps> = ({ onNavigate, guidesHidden, 
         <p style={{ color: 'var(--text-muted)', lineHeight: 1.65 }}>
           LLMStead builds a tiny transformer, the same kind of model behind ChatGPT and Claude, and trains it from scratch
           right here in your browser. It's small enough to finish learning in minutes, and every step is open to inspect, so
-          you can watch how a language model goes from random numbers to (sort of) writing Shakespeare. Nothing you do here
+          you can watch how a language model goes from random numbers to making real predictions. Nothing you do here
           leaves your computer.
         </p>
       </div>

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { DatasetOption, StepInspectionData, TransformerConfig } from './types';
 import { MicroTransformer } from './engine/transformer';
 import { BPETokenizer } from './engine/bpeTokenizer';
-import { SAMPLE_DATASETS } from './engine/datasets';
+import { SAMPLE_DATASETS, samplePromptFor } from './engine/datasets';
 import { Navbar } from './components/Navbar';
 import { SetupView } from './components/SetupView';
 import { TrainingDashboard } from './components/TrainingDashboard';
@@ -60,7 +60,7 @@ export default function App() {
     model.setOptimizer(config.optimizer);
   }, [model, config.optimizer]);
 
-  const [testSentence, setTestSentence] = useState<string>('FIRST CITIZEN: Hear me speak.');
+  const [testSentence, setTestSentence] = useState<string>(() => samplePromptFor(SAMPLE_DATASETS[0]));
 
   // Step Inspection State
   const [inspectionData, setInspectionData] = useState<StepInspectionData>(() => {
@@ -81,7 +81,7 @@ export default function App() {
 
   const handleSelectDataset = (ds: DatasetOption) => {
     setSelectedDataset(ds);
-    setTestSentence(ds.text.slice(0, 30));
+    setTestSentence(samplePromptFor(ds));
   };
 
   const handleAddDataset = (ds: DatasetOption) => {
@@ -115,8 +115,6 @@ export default function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        paramCount={paramCount}
-        datasetName={selectedDataset.name}
         isTraining={isTraining}
       />
 
@@ -165,6 +163,8 @@ export default function App() {
             selectedDataset={selectedDataset}
             onNavigateToSetup={() => setActiveTab('setup')}
             onTrainingChange={setIsTraining}
+            onChangeLearningRate={(learningRate) => setConfig(prev => ({ ...prev, learningRate }))}
+            onChangeOptimizer={(optimizer) => setConfig(prev => ({ ...prev, optimizer }))}
           />
         </div>
 

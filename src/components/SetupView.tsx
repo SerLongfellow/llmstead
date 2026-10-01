@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { DatasetOption, TransformerConfig } from '../types';
 import { BPETokenizer } from '../engine/bpeTokenizer';
-import { BookOpen, Binary, Sliders, Gauge, Info, Plus, ChevronRight, Ruler } from 'lucide-react';
+import { BookOpen, Binary, Sliders, Info, Plus, ChevronRight, Ruler } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 import { ScaleComparison } from './ScaleComparison';
 import { referenceHint, FRONTIER_NOTE } from '../engine/referenceModels';
@@ -16,7 +16,7 @@ interface SetupViewProps {
   tokenizer: BPETokenizer;
   targetVocabSize: number;
   onChangeVocabSize: (vocabSize: number) => void;
-  // 3–4. Architecture + training settings
+  // 3. Architecture
   config: TransformerConfig; // vocabSize here is the tokenizer's actual vocab
   onChangeConfig: (newConfig: TransformerConfig) => void;
   paramCount: number;
@@ -380,49 +380,6 @@ export const SetupView: React.FC<SetupViewProps> = ({
             value={config.mlpRatio}
             onChange={v => updateField('mlpRatio', v)}
           />
-        </Section>
-
-        {/* 4. Training settings */}
-        <Section step={4} icon={<Gauge size={20} color="var(--accent-emerald)" />} title="Training Settings" note="Safe to change mid-training" resets={false}>
-          <SliderRow
-            label="Learning Rate"
-            tooltip={{
-              title: 'Optimizer Learning Rate',
-              description: 'The step size used when updating weight matrices during backpropagation.',
-              impact: 'Too high causes training divergence/loss explosion; too low makes learning very slow.',
-            }}
-            valueLabel={config.learningRate}
-            color="var(--accent-rose)"
-            min={0.001}
-            max={0.05}
-            step={0.001}
-            value={config.learningRate}
-            onChange={v => updateField('learningRate', v)}
-            hint="Weights are kept when this changes"
-          />
-
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Optimizer</label>
-              <InfoTooltip
-                title="Optimizer"
-                description="SGD steps every weight by lr × gradient. AdamW keeps running averages of each weight's gradient (momentum) and squared gradient, giving every weight its own adaptive step size, and applies weight decay separately from the gradient."
-                impact="AdamW usually converges much faster on transformers. Switching resets AdamW's running averages but keeps the learned weights."
-              />
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(['adamw', 'sgd'] as const).map(opt => (
-                <button
-                  key={opt}
-                  className={config.optimizer === opt ? 'btn-primary' : 'btn-secondary'}
-                  style={{ padding: '4px 14px' }}
-                  onClick={() => updateField('optimizer', opt)}
-                >
-                  {opt === 'adamw' ? 'AdamW' : 'SGD'}
-                </button>
-              ))}
-            </div>
-          </div>
         </Section>
 
         {/* Not a step: real models for comparison */}
