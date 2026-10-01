@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { DatasetOption, TransformerConfig } from '../types';
 import { BPETokenizer } from '../engine/bpeTokenizer';
-import { BookOpen, Binary, Sliders, Gauge, Info, Plus, ChevronRight } from 'lucide-react';
+import { BookOpen, Binary, Sliders, Gauge, Info, Plus, ChevronRight, Ruler } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
+import { ScaleComparison } from './ScaleComparison';
+import { referenceHint, FRONTIER_NOTE } from '../engine/referenceModels';
 
 interface SetupViewProps {
   // 1. Data
@@ -61,7 +63,8 @@ const SliderRow: React.FC<{
   value: number;
   onChange: (v: number) => void;
   hint?: string;
-}> = ({ label, tooltip, valueLabel, color, min, max, step, value, onChange, hint }) => (
+  reference?: string; // how real models set this, e.g. "GPT-2 small: 768 · ..."
+}> = ({ label, tooltip, valueLabel, color, min, max, step, value, onChange, hint, reference }) => (
   <div>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -72,6 +75,7 @@ const SliderRow: React.FC<{
     </div>
     <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))} />
     {hint && <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>{hint}</span>}
+    {reference && <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>For scale: {reference}</div>}
   </div>
 );
 
@@ -252,6 +256,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
         <Section step={2} icon={<Binary size={20} color="var(--accent-rose)" />} title="Tokenizer" note="Changing resets the model" resets>
           <SliderRow
             label="Vocabulary Size (V)"
+            reference={referenceHint('vocabSize')}
             tooltip={{
               title: 'Vocabulary Size (V)',
               description: 'How many distinct tokens the BPE tokenizer learns from the dataset: every single character, plus merged character runs until it reaches this size.',
@@ -276,6 +281,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
         <Section step={3} icon={<Sliders size={20} color="var(--primary)" />} title="Architecture" note="Changing resets the model" resets>
           <SliderRow
             label="Embedding Dimension (d_model)"
+            reference={referenceHint('dModel')}
             tooltip={{
               title: 'Embedding Dimension (d_model)',
               description: 'The length of the dense numerical vector assigned to each token. Higher dimensions capture richer semantic relationships.',
@@ -293,6 +299,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
 
           <SliderRow
             label="Context Window Length (Seq Len)"
+            reference={`${referenceHint('contextWindow')} · frontier models: ${FRONTIER_NOTE.contextRange}`}
             tooltip={{
               title: 'Context Window Length (Seq Len)',
               description: 'The maximum number of sequence tokens the model can process, attend to, and remember at one time.',
@@ -337,10 +344,12 @@ export const SetupView: React.FC<SetupViewProps> = ({
             <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
               Only divisors of d_model ({config.dModel}) are allowed, so every head gets an equal slice
             </span>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>For scale: {referenceHint('heads')}</div>
           </div>
 
           <SliderRow
             label="Transformer Blocks (Layers L)"
+            reference={referenceHint('layers')}
             tooltip={{
               title: 'Transformer Stack Depth (L)',
               description: 'The number of stacked attention + MLP blocks. Deeper layers form abstract reasoning and higher-level concepts.',
@@ -415,6 +424,15 @@ export const SetupView: React.FC<SetupViewProps> = ({
             </div>
           </div>
         </Section>
+
+        {/* Not a step: real models for comparison */}
+        <div className="glass-panel" style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <Ruler size={20} color="var(--accent-cyan)" />
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>For scale: real LLMs</h2>
+          </div>
+          <ScaleComparison config={config} paramCount={paramCount} />
+        </div>
       </div>
 
       {/* Right: parameter breakdown, kept in view while scrolling the steps */}
