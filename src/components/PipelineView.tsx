@@ -522,6 +522,24 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
       return (
         <>
           <SectionTitle step={`Stage ${4 + config.numLayers}`} title="Score every token in the vocabulary" formula="softmax(LN(x) · W_head)" />
+          <div
+            style={{
+              margin: '4px 0 12px',
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'var(--primary-soft)',
+              border: '1px solid color-mix(in srgb, var(--primary) 35%, transparent)',
+              fontSize: '0.85rem',
+              color: 'var(--text-muted)',
+              lineHeight: 1.6,
+            }}
+          >
+            <b style={{ color: 'var(--text-main)' }}>The output is one full guess per input token:</b> a{' '}
+            <span className="font-mono" style={{ color: 'var(--text-main)' }}>[{seqLen} × {config.vocabSize}]</span> grid, with
+            one row for each of your {seqLen} tokens and, in each row, a probability for every token in the vocabulary.
+            Training checks every row against the token that really comes next. Generating text only needs the last row:
+            the other rows predict tokens that are already in the prompt.
+          </div>
           <Explain>
             The final vector for <TokenChip text={focusTok} active /> is compared against every one of the {config.vocabSize} vocab
             tokens, giving one score each. Softmax turns the scores into probabilities that add up to 100%. Top guesses for

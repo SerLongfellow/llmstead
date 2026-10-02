@@ -175,9 +175,10 @@ export const SlowMotionPanel: React.FC<SlowMotionPanelProps> = ({ step, stage, p
               "3 + 4". One run, {n} fair questions, which is a big part of why transformers are fast to train.
             </p>
             <p>
-              <b style={{ color: 'var(--text-main)' }}>Generating is different.</b> When the model writes new text, the next
-              token doesn't exist yet, so it has to go one token at a time: predict, append, repeat. You can try that in Look
-              inside → Next token.
+              <b style={{ color: 'var(--text-main)' }}>Generating is different.</b> The model still makes a guess at every
+              position; generating just keeps the last one. When the model writes new text, the next token doesn't exist
+              yet, so it has to go one token at a time: predict, append, repeat. You can try that in Look inside → Next
+              token.
             </p>
           </div>
         </details>
