@@ -1,4 +1,5 @@
 import { LayerInspection, StepInspectionData, TransformerConfig } from '../types';
+import { BLOCK_WEIGHT_NAMES, BlockCache, BlockWeights, blockBackward, blockForward } from './block';
 import { Matrix, MatrixMath } from './tensor';
 import { Optimizer, OptimizerState, OptimizerType } from './optimizer';
 
@@ -26,14 +27,6 @@ export type ArchitectureConfig = Pick<
  *
  * Pre-LN trains more stably in deep stacks; post-LN is simpler to read.
  */
-
-/** Values from the forward pass that the visualizers don't need but backprop does */
-interface LayerCache {
-  input: Matrix;        // block input x
-  res1: Matrix;         // x + attention output (input to LayerNorm 1)
-  mlpHiddenRaw: Matrix; // MLP pre-activation (input to GELU)
-  res2: Matrix;         // norm1 + MLP output (input to LayerNorm 2)
-}
 
 export class MicroTransformer {
   public config: TransformerConfig;
@@ -119,19 +112,26 @@ export class MicroTransformer {
     return tokenEmbedParams + posEmbedParams + numLayers * perLayerParams + headParams;
   }
 
+  /** Layer l's weights, grouped for the shared block code (the live arrays, not copies) */
+  private blockWeights(l: number): BlockWeights {
+    return {
+      wQ: this.wQ[l], wK: this.wK[l], wV: this.wV[l], wO: this.wO[l],
+      wMlp1: this.wMlp1[l], wMlp2: this.wMlp2[l],
+    };
+  }
+
   /** Run a complete forward pass and capture all internal states for visualization */
   public inspectForwardPass(tokens: number[], tokenStrings: string[]): StepInspectionData {
     return this.forward(tokens, tokenStrings).data;
   }
 
   /** Forward pass that also returns the extra per-layer values the backward pass needs */
-  private forward(tokens: number[], tokenStrings: string[]): { data: StepInspectionData; caches: LayerCache[] } {
+  private forward(tokens: number[], tokenStrings: string[]): { data: StepInspectionData; caches: BlockCache[] } {
     const seqLen = Math.min(tokens.length, this.config.contextWindow);
     const slicedTokens = tokens.slice(0, seqLen);
     const slicedStrings = tokenStrings.slice(0, seqLen);
     const dModel = this.config.dModel;
     const numHeads = this.config.numHeads;
-    const headDim = dModel / numHeads; // exact: constructor guarantees divisibility
 
     // 1. Embedding lookup
     const tokenEmbeddings: Matrix = MatrixMath.zeros(seqLen, dModel);
@@ -151,95 +151,14 @@ export class MicroTransformer {
 
     let x: Matrix = combinedEmbeddings;
     const layerInspections: LayerInspection[] = [];
-    const caches: LayerCache[] = [];
+    const caches: BlockCache[] = [];
 
-    // 2. Transformer Block Execution
+    // 2. Transformer blocks (causal: each position may only look back)
     for (let l = 0; l < this.config.numLayers; l++) {
-      // Q, K, V projections: [seqLen x dModel] * [dModel x dModel] -> [seqLen x dModel]
-      const fullQ = MatrixMath.matmul(x, this.wQ[l]);
-      const fullK = MatrixMath.matmul(x, this.wK[l]);
-      const fullV = MatrixMath.matmul(x, this.wV[l]);
-
-      // Split into heads: [numHeads][seqLen][headDim]
-      const queries: number[][][] = MatrixMath.zeros3D(numHeads, seqLen, headDim);
-      const keys: number[][][] = MatrixMath.zeros3D(numHeads, seqLen, headDim);
-      const values: number[][][] = MatrixMath.zeros3D(numHeads, seqLen, headDim);
-
-      for (let h = 0; h < numHeads; h++) {
-        for (let i = 0; i < seqLen; i++) {
-          for (let d = 0; d < headDim; d++) {
-            queries[h][i][d] = fullQ[i][h * headDim + d];
-            keys[h][i][d] = fullK[i][h * headDim + d];
-            values[h][i][d] = fullV[i][h * headDim + d];
-          }
-        }
-      }
-
-      // Compute Multi-Head Attention for each head
-      const rawAttentionScores: number[][][] = MatrixMath.zeros3D(numHeads, seqLen, seqLen);
-      const attentionWeights: number[][][] = MatrixMath.zeros3D(numHeads, seqLen, seqLen);
-      const headOutputs: number[][][] = MatrixMath.zeros3D(numHeads, seqLen, headDim);
-
-      for (let h = 0; h < numHeads; h++) {
-        // Dot product Q_h * K_h^T / sqrt(headDim)
-        const Q_h = queries[h];
-        const K_h_T = MatrixMath.transpose(keys[h]);
-        const scores = MatrixMath.scale(MatrixMath.matmul(Q_h, K_h_T), 1.0 / Math.sqrt(headDim));
-        rawAttentionScores[h] = scores;
-
-        // Causal Softmax
-        const attnPattern = MatrixMath.softmax(scores, true);
-        attentionWeights[h] = attnPattern;
-
-        // Weighted sum of Values: [seqLen x seqLen] * [seqLen x headDim] -> [seqLen x headDim]
-        headOutputs[h] = MatrixMath.matmul(attnPattern, values[h]);
-      }
-
-      // Concatenate Head outputs: [seqLen x dModel]
-      const concatOutput: Matrix = MatrixMath.zeros(seqLen, dModel);
-      for (let i = 0; i < seqLen; i++) {
-        for (let h = 0; h < numHeads; h++) {
-          for (let d = 0; d < headDim; d++) {
-            concatOutput[i][h * headDim + d] = headOutputs[h][i][d];
-          }
-        }
-      }
-
-      // Project concatenated multi-head output back: [seqLen x dModel]
-      const attnProjected = MatrixMath.matmul(concatOutput, this.wO[l]);
-
-      // Post-LN: residual add FIRST, then normalize the sum
-      const res1 = MatrixMath.add(x, attnProjected);
-      const norm1Output = MatrixMath.layerNorm(res1);
-
-      // MLP / Feed-Forward Network on the normalized stream: MLP1 -> GELU -> MLP2
-      const mlpHiddenRaw = MatrixMath.matmul(norm1Output, this.wMlp1[l]);
-      const mlpHidden = MatrixMath.gelu(mlpHiddenRaw);
-      const mlpOutput = MatrixMath.matmul(mlpHidden, this.wMlp2[l]);
-
-      // Post-LN: residual add (around the MLP), then normalize again
-      const res2 = MatrixMath.add(norm1Output, mlpOutput);
-      const norm2Output = MatrixMath.layerNorm(res2);
-
-      layerInspections.push({
-        layerIndex: l,
-        queries,
-        keys,
-        values,
-        rawAttentionScores,
-        attentionWeights,
-        headOutputs,
-        concatOutput,
-        norm1Output,
-        mlpHidden,
-        mlpOutput,
-        norm2Output
-      });
-
-      // Pass output to next block
-      caches.push({ input: x, res1, mlpHiddenRaw, res2 });
-
-      x = norm2Output;
+      const { inspection, cache } = blockForward(x, this.blockWeights(l), numHeads, true, l);
+      layerInspections.push(inspection);
+      caches.push(cache);
+      x = inspection.norm2Output;
     }
 
     // Final LayerNorm before the unembedding head. In this post-LN layout x is already
@@ -363,8 +282,6 @@ export class MicroTransformer {
   ): { loss: number; perplexity: number; grads: Record<string, Matrix> } {
     const seqLen = Math.min(inputTokens.length, targetTokens.length, this.config.contextWindow);
     const { vocabSize, contextWindow, dModel, numHeads, numLayers } = this.config;
-    const headDim = dModel / numHeads;
-    const attnScale = 1.0 / Math.sqrt(headDim);
     const T = MatrixMath.transpose;
     const mm = MatrixMath.matmul;
 
@@ -391,74 +308,11 @@ export class MicroTransformer {
     const lastOut = numLayers > 0 ? fwd.layerInspections[numLayers - 1].norm2Output : fwd.combinedEmbeddings;
     let dX = MatrixMath.layerNormBackward(lastOut, dFinalNorm);
 
-    // ── Transformer blocks, last to first. dX enters as ∂L/∂(block output).
+    // ── Transformer blocks, last to first. dX enters as ∂L/∂(block output); see blockBackward.
     for (let l = numLayers - 1; l >= 0; l--) {
-      const ins = fwd.layerInspections[l];
-      const cache = caches[l];
-
-      // norm2 = LN(res2)
-      const dRes2 = MatrixMath.layerNormBackward(cache.res2, dX);
-
-      // res2 = norm1 + mlpOut  → gradient flows to both the skip path and the MLP
-      const dNorm1 = dRes2.map(row => row.slice());
-      const dMlpOut = dRes2;
-
-      // mlpOut = gelu(mlpHiddenRaw) · W2
-      grads[`wMlp2.${l}`] = mm(T(ins.mlpHidden), dMlpOut);
-      const dMlpHidden = mm(dMlpOut, T(this.wMlp2[l]));
-
-      // mlpHidden = gelu(mlpHiddenRaw)
-      const dMlpRaw = MatrixMath.geluBackward(cache.mlpHiddenRaw, dMlpHidden);
-
-      // mlpHiddenRaw = norm1 · W1
-      grads[`wMlp1.${l}`] = mm(T(ins.norm1Output), dMlpRaw);
-      MatrixMath.addInPlace(dNorm1, mm(dMlpRaw, T(this.wMlp1[l])));
-
-      // norm1 = LN(res1)
-      const dRes1 = MatrixMath.layerNormBackward(cache.res1, dNorm1);
-
-      // res1 = x + attnProjected  → skip path and attention branch both get dRes1
-      const dInput = dRes1.map(row => row.slice());
-      const dAttnProjected = dRes1;
-
-      // attnProjected = concat · W_O
-      grads[`wO.${l}`] = mm(T(ins.concatOutput), dAttnProjected);
-      const dConcat = mm(dAttnProjected, T(this.wO[l]));
-
-      // Per head: scores = Q_h·K_hᵀ·scale, A = causalSoftmax(scores), out_h = A·V_h
-      const dQ = MatrixMath.zeros(seqLen, dModel);
-      const dK = MatrixMath.zeros(seqLen, dModel);
-      const dV = MatrixMath.zeros(seqLen, dModel);
-      for (let h = 0; h < numHeads; h++) {
-        const off = h * headDim;
-        const dOut = dConcat.map(row => row.slice(off, off + headDim));
-        const A = ins.attentionWeights[h];
-
-        const dA = mm(dOut, T(ins.values[h]));
-        const dV_h = mm(T(A), dOut);
-        const dScores = MatrixMath.scale(MatrixMath.softmaxBackward(A, dA), attnScale);
-        const dQ_h = mm(dScores, ins.keys[h]);
-        const dK_h = mm(T(dScores), ins.queries[h]);
-
-        for (let i = 0; i < seqLen; i++) {
-          for (let d = 0; d < headDim; d++) {
-            dQ[i][off + d] = dQ_h[i][d];
-            dK[i][off + d] = dK_h[i][d];
-            dV[i][off + d] = dV_h[i][d];
-          }
-        }
-      }
-
-      // Q = x·W_Q, K = x·W_K, V = x·W_V  → x gets gradient from all three projections
-      const xT = T(cache.input);
-      grads[`wQ.${l}`] = mm(xT, dQ);
-      grads[`wK.${l}`] = mm(xT, dK);
-      grads[`wV.${l}`] = mm(xT, dV);
-      MatrixMath.addInPlace(dInput, mm(dQ, T(this.wQ[l])));
-      MatrixMath.addInPlace(dInput, mm(dK, T(this.wK[l])));
-      MatrixMath.addInPlace(dInput, mm(dV, T(this.wV[l])));
-
-      dX = dInput;
+      const back = blockBackward(dX, this.blockWeights(l), fwd.layerInspections[l], caches[l], numHeads);
+      for (const name of BLOCK_WEIGHT_NAMES) grads[`${name}.${l}`] = back.grads[name];
+      dX = back.dInput;
     }
 
     // ── Embeddings: x_i = tokEmbed[tok_i] + posEmbed[i]
