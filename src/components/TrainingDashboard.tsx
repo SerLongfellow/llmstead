@@ -23,8 +23,11 @@ import { Line } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-/** Measure validation loss every N training steps (it runs the model over the whole held-out split) */
-const VAL_EVERY = 50;
+/**
+ * Measure validation loss every N training steps. Each measurement is up to MAX_VAL_WINDOWS
+ * forward passes, so measuring too often eats into training time (every 50 steps cost ~15%).
+ */
+const VAL_EVERY = 200;
 const MAX_VAL_WINDOWS = 32;
 
 /** Slow motion: how long each stage (Sample, Forward, Compare, Backward, Update) stays on screen */

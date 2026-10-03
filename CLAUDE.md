@@ -6,6 +6,7 @@ Local React + Vite + TypeScript site for learning how LLMs work: train a tiny tr
 - `npm run dev` — dev server
 - `npm run build` — `tsc && vite build` (output in `dist/`, which is stale; rebuild)
 - `npm run gradcheck` — finite-difference check of the backprop
+- `npm run bench` — times a training step, a forward pass and one matmul (default + bigger config); run before/after engine changes
 
 ## Deployment
 **Every push to `main` goes live at https://llmstead.com** (usually within a minute or two), so treat a push as a publish.
@@ -17,7 +18,7 @@ Local React + Vite + TypeScript site for learning how LLMs work: train a tiny tr
 
 ## Layout
 - `src/engine/` — hand-written, dependency-free ML code (intentional: it's meant to be read)
-  - `tensor.ts` — `MatrixMath`: matmul, transpose, softmax (+causal mask), layerNorm (no gain/bias), GELU. Plain `number[][]`.
+  - `tensor.ts` — `MatrixMath`: matmul, transpose, softmax (+causal mask), layerNorm (no gain/bias), GELU. Plain `number[][]`. The hot loops (`matmul` especially, ~half of training time) look up rows once outside the inner loop (~4× faster matmul in V8 than plain `C[i][j]` indexing), so keep it that way. `zeros` stays `new Array(n).fill(0)`: a push-built version was faster in Node but ~40% slower in Chrome. Measure with `npm run bench`, but confirm engine changes in the browser too.
   - `transformer.ts` — `MicroTransformer`. **Post-LayerNorm** blocks (residual add → LN), no biases. `inspectForwardPass` captures every intermediate for the visualizers. `computeGradients` (backprop), `trainStep`, `evaluateLoss` (forward-only, for validation), `setOptimizer`. Throws if `dModel % numHeads !== 0`.
   - `optimizer.ts` — `Optimizer` (SGD with L2, AdamW with decoupled weight decay), per-named-matrix state.
   - `bpeTokenizer.ts` — character-level BPE with merge history (no pre-tokenization; merges can cross word boundaries).
@@ -36,7 +37,7 @@ Local React + Vite + TypeScript site for learning how LLMs work: train a tiny tr
 `computeGradients` in `transformer.ts` is a full manual backward pass (per-op rules for LayerNorm, GELU and softmax live in `tensor.ts` as `*Backward`). `trainStep` clips to global grad-norm 1.0, then sends **every** parameter through `this.optimizer.step()`. `npm run gradcheck` (esbuild-bundles `scripts/gradcheck.ts`) compares every matrix against central finite differences (`src/engine/gradCheck.ts`); expect relative error ~1e-7. Consider making the derivation a tutorial tab.
 - With real gradients, AdamW lr ≈ 0.001 works best; the app default is 0.001 and the Train-page slider is linear 0.001–0.05 (a log-scale slider is a good follow-up; SGD likely needs 0.05–1, untested).
 - Training windows are sampled at random from the train split (not slid sequentially).
-- Continuous training runs as many steps as fit in ~100 ms per tick (`TICK_BUDGET_MS`), then records one chart point (mean loss); validation runs every 50 steps on ≤32 fixed windows. The Step button is still exactly one step.
+- Continuous training runs as many steps as fit in ~100 ms per tick (`TICK_BUDGET_MS`), then records one chart point (mean loss); validation runs every 200 steps (`VAL_EVERY`) on ≤32 fixed windows. The Step button is still exactly one step.
 
 ## Other notes / ideas
 - The default dataset is math-logic (first in `SAMPLE_DATASETS`). Each dataset has a `samplePrompt` (via `samplePromptFor`, which falls back to the first line for custom text) used as the Pipeline input and the generation seed when that dataset is selected.

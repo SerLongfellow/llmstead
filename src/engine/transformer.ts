@@ -452,8 +452,9 @@ export class MicroTransformer {
 
     const params = this.getParameters();
     for (const [name, g] of Object.entries(grads)) {
-      const scaled = clip === 1 ? g : MatrixMath.scale(g, clip);
-      this.optimizer.step(name, params[name], scaled, lr);
+      // Scale in place: these gradients are fresh each step, so there's no need to copy them
+      if (clip !== 1) for (const row of g) for (let c = 0; c < row.length; c++) row[c] *= clip;
+      this.optimizer.step(name, params[name], g, lr);
     }
 
     return { loss, perplexity, gradNorm };
