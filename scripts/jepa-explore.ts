@@ -12,8 +12,8 @@
 // so runs are repeatable. Run in the foreground: Windows throttles background processes heavily.
 import { DEFAULT_JEPA_CONFIG, JepaAblation, MicroJepa, sampleMask } from '../src/engine/jepa/jepa';
 import { Matrix } from '../src/engine/tensor';
-import { collapseStats, imageFeatures, pixelFeatures, runFewLabelProbes, runProbes } from '../src/engine/jepa/probes';
-import { BIG_SHAPES, SMALL_SHAPES, ShapeImage, patchify, randomShapeImage } from '../src/engine/jepa/shapes';
+import { collapseStats, imageFeatures, pixelFeatures, probeImageSets, runFewLabelProbes, runProbes } from '../src/engine/jepa/probes';
+import { BIG_SHAPES, SMALL_SHAPES, patchify, randomShapeImage } from '../src/engine/jepa/shapes';
 import { seededRandom } from '../src/engine/datasets';
 
 let seed = 12345;
@@ -44,12 +44,7 @@ const ablations: JepaAblation[] = ablationArg === 'all' ? ['none', 'no-ema', 'no
 
 const PATCH = DEFAULT_JEPA_CONFIG.patchSize;
 const IMAGE = GRID * PATCH;
-const makeImages = (n: number, s: number): ShapeImage[] => {
-  const rand = seededRandom(s);
-  return Array.from({ length: n }, () => randomShapeImage(rand, IMAGE, SIZES));
-};
-const probeTrain = makeImages(PROBE_N, 1001);
-const probeTest = makeImages(512, 2002);
+const { train: probeTrain, test: probeTest } = probeImageSets(SIZES, PROBE_N, 512, IMAGE);
 
 const pct = (v: number) => `${(v * 100).toFixed(0).padStart(3)}%`;
 const fmt = (v: number) => v.toFixed(2).padStart(5);

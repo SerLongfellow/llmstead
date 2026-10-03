@@ -1,34 +1,90 @@
 import React from 'react';
-import { Home, Compass } from 'lucide-react';
+import { Home, Compass, Type, Image } from 'lucide-react';
 import { ChickenLogo } from './ChickenLogo';
+
+export interface NavTab {
+  id: string;
+  label: string;
+  step: number | null;
+}
+
+/** Which kind of model the site is showing: the text GPT or the image JEPA */
+export type ModelMode = 'gpt' | 'jepa';
+
+export interface ModeSwitchProps {
+  mode: ModelMode;
+  onChange: (mode: ModelMode) => void;
+  /** Whether each mode is training right now (it keeps going while the other is shown) */
+  training: Record<ModelMode, boolean>;
+}
 
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   isTraining: boolean;
+  tabs?: readonly NavTab[];
+  modeSwitch: ModeSwitchProps;
 }
 
+const MODES: { id: ModelMode; label: string; hint: string; icon: React.ReactNode }[] = [
+  { id: 'gpt', label: 'Text · GPT', hint: 'A tiny language model that learns to predict the next token', icon: <Type size={14} /> },
+  { id: 'jepa', label: 'Images · JEPA', hint: 'A tiny JEPA that learns image embeddings by predicting hidden patches', icon: <Image size={14} /> },
+];
+
+/** Switch between the two models. Both stay loaded, so switching never loses training progress. */
+const ModeSwitch: React.FC<ModeSwitchProps> = ({ mode, onChange, training }) => (
+  <div style={{ display: 'flex', gap: 4, background: 'var(--surface-inset)', padding: 3, borderRadius: 8, border: '1px solid var(--border-color)' }}>
+    {MODES.map(m => {
+      const active = m.id === mode;
+      return (
+        <button
+          key={m.id}
+          onClick={() => onChange(m.id)}
+          title={m.hint}
+          aria-pressed={active}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+            fontSize: '0.75rem', fontWeight: 600,
+            background: active ? 'var(--primary)' : 'transparent',
+            color: active ? '#ffffff' : 'var(--text-muted)',
+          }}
+        >
+          {m.icon}
+          {m.label}
+          {!active && training[m.id] && (
+            <span
+              title="Still training in the background"
+              style={{ width: 6, height: 6, borderRadius: 3, background: 'var(--accent-emerald)', animation: 'pulse 1.2s ease-in-out infinite' }}
+            />
+          )}
+        </button>
+      );
+    })}
+  </div>
+);
+
 /** The app's path, in order. Start is the intro, the middle three are numbered steps, and What's next is reading. */
-export const TABS = [
+export const TABS: readonly NavTab[] = [
   { id: 'start', label: 'Start here', step: null },
   { id: 'setup', label: 'Set up', step: 1 },
   { id: 'training', label: 'Train', step: 2 },
   { id: 'pipeline', label: 'Look inside', step: 3 },
   { id: 'next', label: "What's next", step: null },
-] as const;
+];
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   isTraining,
+  tabs = TABS,
+  modeSwitch,
 }) => {
-  const tabs = TABS;
 
   return (
     <header className="glass-panel" style={{ borderRadius: '0 0 10px 10px', borderTop: 'none', padding: '12px 24px', marginBottom: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         {/* Brand Logo & Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <div style={{
             background: 'var(--primary)',
             padding: '8px',
@@ -47,6 +103,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               Raise your own models
             </p>
           </div>
+          <ModeSwitch {...modeSwitch} />
         </div>
 
         {/* Tab Navigation */}

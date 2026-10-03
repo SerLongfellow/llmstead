@@ -1,8 +1,18 @@
 import { seededRandom } from '../datasets';
-import { Optimizer } from '../optimizer';
 import { Matrix, MatrixMath } from '../tensor';
 import { MicroJepa } from './jepa';
-import { COLOURS, SHAPES, ShapeImage, patchify } from './shapes';
+import { COLOURS, SHAPES, ShapeImage, ShapeSizeRange, patchify, randomShapeImage } from './shapes';
+
+/** Fixed, seeded labelled image sets for the probes (the same images every time) */
+export function probeImageSets(
+  sizes: ShapeSizeRange, nTrain: number, nTest: number, imageSize = 16
+): { train: ShapeImage[]; test: ShapeImage[] } {
+  const make = (n: number, seed: number) => {
+    const rand = seededRandom(seed);
+    return Array.from({ length: n }, () => randomShapeImage(rand, imageSize, sizes));
+  };
+  return { train: make(nTrain, 1001), test: make(nTest, 2002) };
+}
 
 /**
  * How do you tell whether a JEPA learned anything? It has no output to read: it only produces
@@ -189,33 +199,17 @@ function ridgeCV(X: Matrix, Y: Matrix): Matrix {
 }
 
 /**
- * Fit one linear map W on the training features:
- *   'classify': softmax(X·W) against one-hot labels (cross-entropy, AdamW, full batch); returns test accuracy
- *   'regress':  X·W against real-valued targets by ridge regression (ridgeCV), with the targets
- *               centred first so the penalty doesn't pull predictions toward 0; returns test R².
- *               (Gradient descent here was unstable with hundreds of features: the same features
- *               could score 0.8 one run and below 0 the next.)
+ * Fit one linear map W on the training features by ridge regression (ridgeCV), with the targets
+ * centred first so the penalty doesn't pull predictions toward 0:
+ *   'classify': X·W against one-hot labels; the predicted class is the largest output. Returns
+ *               test accuracy. (A least-squares classifier: exact and fast enough to run in the
+ *               browser, unlike fitting a softmax by gradient descent on hundreds of features.)
+ *   'regress':  X·W against real-valued targets. Returns test R². (Gradient descent here was
+ *               unstable: the same features could score 0.8 one run and below 0 the next.)
  */
-function fitLinearProbe(
-  Xtr: Matrix, Ytr: Matrix, Xte: Matrix, Yte: Matrix, kind: 'classify' | 'regress', iters = 400
-): number {
-  const XtrT = MatrixMath.transpose(Xtr);
-  let W: Matrix;
-  let offset = new Array(Ytr[0].length).fill(0);
-  if (kind === 'regress') {
-    offset = offset.map((_, k) => Ytr.reduce((s, y) => s + y[k], 0) / Ytr.length);
-    W = ridgeCV(Xtr, Ytr.map(y => y.map((v, k) => v - offset[k])));
-  } else {
-    W = MatrixMath.zeros(Xtr[0].length, Ytr[0].length);
-    const opt = new Optimizer('adamw', { weightDecay: 1e-3 });
-    for (let it = 0; it < iters; it++) {
-      const out = MatrixMath.softmax(MatrixMath.matmul(Xtr, W));
-      // Softmax + cross-entropy: the gradient w.r.t. the logits is (probabilities − one-hot)/n
-      const dOut = out.map((row, i) => row.map((v, k) => (v - Ytr[i][k]) / Xtr.length));
-      opt.step('W', W, MatrixMath.matmul(XtrT, dOut), 0.02);
-    }
-  }
-
+function fitLinearProbe(Xtr: Matrix, Ytr: Matrix, Xte: Matrix, Yte: Matrix, kind: 'classify' | 'regress'): number {
+  const offset = Ytr[0].map((_, k) => Ytr.reduce((s, y) => s + y[k], 0) / Ytr.length);
+  const W = ridgeCV(Xtr, Ytr.map(y => y.map((v, k) => v - offset[k])));
   const pred = MatrixMath.matmul(Xte, W).map(row => row.map((v, k) => v + offset[k]));
   if (kind === 'classify') {
     const argmax = (row: number[]) => row.indexOf(Math.max(...row));

@@ -269,15 +269,17 @@ function encoderMatrices(enc: Encoder): Record<string, Matrix> {
   return out;
 }
 
-function cloneEncoder(enc: Encoder): Encoder {
-  const copy = (M: Matrix) => M.map(row => row.slice());
+const copyMatrix = (M: Matrix): Matrix => M.map(row => row.slice());
+
+function cloneBlock(b: BlockWeights): BlockWeights {
   return {
-    wPatch: copy(enc.wPatch),
-    wPos: copy(enc.wPos),
-    blocks: enc.blocks.map(b => ({
-      wQ: copy(b.wQ), wK: copy(b.wK), wV: copy(b.wV), wO: copy(b.wO), wMlp1: copy(b.wMlp1), wMlp2: copy(b.wMlp2),
-    })),
+    wQ: copyMatrix(b.wQ), wK: copyMatrix(b.wK), wV: copyMatrix(b.wV), wO: copyMatrix(b.wO),
+    wMlp1: copyMatrix(b.wMlp1), wMlp2: copyMatrix(b.wMlp2),
   };
+}
+
+function cloneEncoder(enc: Encoder): Encoder {
+  return { wPatch: copyMatrix(enc.wPatch), wPos: copyMatrix(enc.wPos), blocks: enc.blocks.map(cloneBlock) };
 }
 
 /**
@@ -331,8 +333,12 @@ function meanSquaredError(preds: Matrix, targets: Matrix): { loss: number; error
   return { loss: errors.reduce((s, e) => s + e, 0) / count, errors };
 }
 
+/** The training-recipe settings, which (unlike the architecture) can change mid-training */
+export type JepaRecipe = Pick<JepaConfig, 'ablation' | 'varWeight' | 'covWeight'>;
+
 export class MicroJepa {
-  public readonly config: JepaConfig;
+  /** Replaced (never mutated) by setRecipe; the architecture fields never change */
+  public config: JepaConfig;
   public readonly grid: number;          // patches per side
   public readonly numPatches: number;
   /** Optimizer steps taken so far (drives the EMA schedule) */
@@ -379,6 +385,33 @@ export class MicroJepa {
 
   public getParameterCount(): number {
     return Object.values(this.getParameters()).reduce((s, M) => s + M.length * M[0].length, 0);
+  }
+
+  /**
+   * Switch the anti-collapse recipe without touching the weights, e.g. remove stop-gradient
+   * halfway through training to watch the encoder collapse. Under the ablations the EMA copy
+   * isn't updated, so returning to the real recipe restarts it from the current encoder.
+   */
+  public setRecipe(recipe: JepaRecipe): void {
+    if (recipe.ablation === 'none' && this.config.ablation !== 'none') this.target = cloneEncoder(this.context);
+    this.config = { ...this.config, ...recipe };
+  }
+
+  /** An independent copy with the same weights and step count (e.g. to keep the untrained encoder as a baseline) */
+  public clone(): MicroJepa {
+    const copy = new MicroJepa(this.config);
+    copy.context = cloneEncoder(this.context);
+    copy.target = cloneEncoder(this.target);
+    const pr = this.predictor;
+    copy.predictor = {
+      wIn: copyMatrix(pr.wIn),
+      wPos: copyMatrix(pr.wPos),
+      maskToken: copyMatrix(pr.maskToken),
+      blocks: pr.blocks.map(cloneBlock),
+      wOut: copyMatrix(pr.wOut),
+    };
+    copy.steps = this.steps;
+    return copy;
   }
 
   /** EMA momentum m for the current step */

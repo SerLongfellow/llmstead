@@ -4,7 +4,8 @@ import { DatasetOption, StepInspectionData, TransformerConfig } from './types';
 import { MicroTransformer } from './engine/transformer';
 import { BPETokenizer } from './engine/bpeTokenizer';
 import { SAMPLE_DATASETS, samplePromptFor } from './engine/datasets';
-import { Navbar } from './components/Navbar';
+import { ModeSwitchProps, ModelMode, Navbar } from './components/Navbar';
+import { JepaWorkbench } from './components/jepa/JepaWorkbench';
 import { SetupView } from './components/SetupView';
 import { TrainingDashboard } from './components/TrainingDashboard';
 import { PipelineView } from './components/PipelineView';
@@ -44,6 +45,16 @@ const AUTOSAVE_MS = 10_000;
 /** Longest the first render waits for the web fonts before showing the app anyway */
 const FONT_WAIT_MS = 600;
 
+/** Which model the site shows (remembered in this browser) */
+const MODE_KEY = 'llmstead.mode';
+const loadMode = (): ModelMode => {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'jepa' ? 'jepa' : 'gpt';
+  } catch {
+    return 'gpt';
+  }
+};
+
 /** Reads the autosave (if any) once, then renders the app starting from it */
 export default function App() {
   const [boot, setBoot] = useState<{ saved: SavedSession | null } | null>(null);
@@ -59,13 +70,86 @@ export default function App() {
   // Loading takes a few milliseconds; show just the page background (set in index.html) rather
   // than flash the defaults, then the app fades in (.app-shell)
   if (!boot) return null;
-  return <Workbench saved={boot.saved} />;
+  return <Site saved={boot.saved} />;
+}
+
+/**
+ * The two models, each with its own tabs: the text GPT and the image JEPA. Both stay mounted
+ * (just hidden) once opened, so switching never interrupts training or loses a chart. The JEPA
+ * side is only built the first time it's opened.
+ */
+function Site({ saved }: { saved: SavedSession | null }) {
+  const [mode, setModeState] = useState<ModelMode>(loadMode);
+  const [jepaOpened, setJepaOpened] = useState(mode === 'jepa');
+  const [training, setTraining] = useState<Record<ModelMode, boolean>>({ gpt: false, jepa: false });
+  const setMode = (next: ModelMode) => {
+    setModeState(next);
+    if (next === 'jepa') setJepaOpened(true);
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* storage unavailable: the choice just won't persist */
+    }
+    window.scrollTo(0, 0);
+  };
+  const modeSwitch: ModeSwitchProps = { mode, onChange: setMode, training };
+
+  return (
+    <div className="app-shell" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
+      <div style={{ display: mode === 'gpt' ? 'block' : 'none' }}>
+        <Workbench
+          saved={saved}
+          active={mode === 'gpt'}
+          modeSwitch={modeSwitch}
+          onTrainingChange={t => setTraining(prev => ({ ...prev, gpt: t }))}
+        />
+      </div>
+      {jepaOpened && (
+        <div style={{ display: mode === 'jepa' ? 'block' : 'none' }}>
+          <JepaWorkbench
+            active={mode === 'jepa'}
+            modeSwitch={modeSwitch}
+            onTrainingChange={t => setTraining(prev => ({ ...prev, jepa: t }))}
+          />
+        </div>
+      )}
+
+      <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+        <p>LLMStead • Raise your own models: tiny transformers, built and trained from scratch in your browser</p>
+        <p style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 14px' }}>
+          <span>Additional resources:</span>
+          {RESOURCES.map(r => (
+            <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" title={r.description} style={{ color: 'var(--text-muted)' }}>
+              {r.name}
+            </a>
+          ))}
+        </p>
+        <p style={{ marginTop: '8px' }}>
+          <a
+            href="https://github.com/SerLongfellow/llmstead"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Github size={14} /> View the source on GitHub
+          </a>
+        </p>
+      </footer>
+    </div>
+  );
 }
 
 
 type RestoreNote = { kind: 'restored'; step: number; savedAt: number } | { kind: 'discarded' };
 
-function Workbench({ saved }: { saved: SavedSession | null }) {
+interface WorkbenchProps {
+  saved: SavedSession | null;
+  active: boolean; // whether the GPT side is the one showing
+  modeSwitch: ModeSwitchProps;
+  onTrainingChange: (training: boolean) => void;
+}
+
+function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchProps) {
   // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches)
   const [datasets, setDatasets] = useState<DatasetOption[]>(() => [...SAMPLE_DATASETS, ...(saved?.customDatasets ?? [])]);
   const [selectedDataset, setSelectedDataset] = useState<DatasetOption>(
@@ -185,6 +269,10 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   };
 
   const [isTraining, setIsTraining] = useState<boolean>(false);
+  useEffect(() => {
+    onTrainingChange(isTraining);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTraining]);
 
   // ── Autosave ──────────────────────────────────────────────────────────────
   // Anything that changes the session marks it dirty; it's written every AUTOSAVE_MS, when
@@ -242,11 +330,12 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   };
 
   return (
-    <div className="app-shell" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
+    <>
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTraining={isTraining}
+        modeSwitch={modeSwitch}
       />
 
       <main style={{ minHeight: '80vh' }}>
@@ -332,7 +421,7 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
             onTrainingChange={setIsTraining}
             onChangeLearningRate={(learningRate) => setConfig(prev => ({ ...prev, learningRate }))}
             onChangeOptimizer={(optimizer) => setConfig(prev => ({ ...prev, optimizer }))}
-            visible={activeTab === 'training'}
+            visible={active && activeTab === 'training'}
             initialHistory={initialHistory}
             onHistoryChange={onHistoryChange}
             saveStatus={saveStatus}
@@ -362,28 +451,6 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
 
         {activeTab === 'next' && <WhatsNextView onNavigate={setActiveTab} />}
       </main>
-
-      <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-        <p>LLMStead • Raise your own models: a tiny transformer, built and trained from scratch in your browser</p>
-        <p style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 14px' }}>
-          <span>Additional resources:</span>
-          {RESOURCES.map(r => (
-            <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" title={r.description} style={{ color: 'var(--text-muted)' }}>
-              {r.name}
-            </a>
-          ))}
-        </p>
-        <p style={{ marginTop: '8px' }}>
-          <a
-            href="https://github.com/SerLongfellow/llmstead"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Github size={14} /> View the source on GitHub
-          </a>
-        </p>
-      </footer>
-    </div>
+    </>
   );
 }
