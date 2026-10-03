@@ -7,7 +7,7 @@ import { MergeHistory } from './MergeHistory';
 import { showTok, cosine, TokenChip } from './tokenUi';
 import { EmbeddingSpace } from './EmbeddingSpace';
 import { GoDeeper } from './GoDeeper';
-import { PromptInput, PromptHint } from './PromptInput';
+import { PromptInput, PromptHint, ShortcutKey } from './PromptInput';
 import { THEME, rgb } from '../styles/theme';
 import { MicroTransformer } from '../engine/transformer';
 
@@ -798,7 +798,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <PromptInput value={testInput} onChange={setTestInput} onSubmit={onRunInspect} style={{ flex: 1, fontSize: '0.95rem' }} />
           <button className="btn-primary" onClick={onRunInspect}>
-            <Sparkles size={16} /> Run
+            <Sparkles size={16} /> Run <ShortcutKey />
           </button>
         </div>
         <PromptHint />

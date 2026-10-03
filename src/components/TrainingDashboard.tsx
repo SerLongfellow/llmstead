@@ -20,7 +20,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { PromptInput, PromptHint } from './PromptInput';
+import { PromptInput, PromptHint, ShortcutKey } from './PromptInput';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -605,7 +605,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
           </div>
 
           <button className="btn-primary" onClick={handleGenerate}>
-            <Sparkles size={16} /> Generate Tokens
+            <Sparkles size={16} /> Generate Tokens <ShortcutKey />
           </button>
         </div>
 

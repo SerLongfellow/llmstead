@@ -83,6 +83,25 @@ body {
   font-family: var(--font-mono);
 }
 
+/* Keyboard shortcut chip, e.g. inside a button. Hidden on touch-only devices (no keyboard). */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  opacity: 0.85;
+}
+@media (hover: none) and (pointer: coarse) {
+  .kbd { display: none; }
+}
+
 /* Badges */
 .badge {
   display: inline-flex;
@@ -128,6 +147,7 @@ body {
   border-radius: 6px;
   cursor: pointer;
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   font-size: 0.875rem;
