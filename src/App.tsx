@@ -86,7 +86,11 @@ export default function App() {
 
   // Re-run inspection whenever testSentence, model, or tokenizer changes
   const runInspection = () => {
-    const encoded = tokenizer.encode(testSentence);
+    // An empty prompt has no tokens to run (the forward pass needs at least one), so fall
+    // back to the dataset's sample prompt; it always matches the current model's shape
+    let encoded = tokenizer.encode(testSentence);
+    if (encoded.tokens.length === 0) encoded = tokenizer.encode(samplePromptFor(selectedDataset));
+    if (encoded.tokens.length === 0) return;
     const data = model.inspectForwardPass(encoded.tokens, encoded.tokenStrings);
     setInspectionData(data);
   };

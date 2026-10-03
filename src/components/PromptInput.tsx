@@ -22,10 +22,12 @@ export const PromptInput: React.FC<{
   value: string;
   onChange: (value: string) => void;
   onSubmit?: () => void;
+  placeholder?: string;
   style?: React.CSSProperties;
-}> = ({ value, onChange, onSubmit, style }) => (
+}> = ({ value, onChange, onSubmit, placeholder, style }) => (
   <textarea
     value={value}
+    placeholder={placeholder}
     onChange={e => onChange(e.target.value)}
     onKeyDown={e => {
       if (onSubmit && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {

@@ -796,12 +796,17 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>One Forward Pass, Start to Finish</h2>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-          <PromptInput value={testInput} onChange={setTestInput} onSubmit={onRunInspect} style={{ flex: 1, fontSize: '0.95rem' }} />
+          <PromptInput value={testInput} onChange={setTestInput} onSubmit={onRunInspect} placeholder="Enter some text to run inference" style={{ flex: 1, fontSize: '0.95rem' }} />
           <button className="btn-primary" onClick={onRunInspect}>
             <Sparkles size={16} /> Run <ShortcutKey />
           </button>
         </div>
         <PromptHint />
+        {testInput.length === 0 && (
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 8 }}>
+            Enter some text to run inference. Until then, the sample prompt is shown below.
+          </p>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 4 }}>Follow a token:</span>
           {data.tokenStrings.map((t, i) => (
