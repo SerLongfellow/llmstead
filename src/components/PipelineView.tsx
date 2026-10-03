@@ -7,6 +7,7 @@ import { MergeHistory } from './MergeHistory';
 import { showTok, cosine, TokenChip } from './tokenUi';
 import { EmbeddingSpace } from './EmbeddingSpace';
 import { GoDeeper } from './GoDeeper';
+import { PromptInput, PromptHint } from './PromptInput';
 import { THEME, rgb } from '../styles/theme';
 import { MicroTransformer } from '../engine/transformer';
 
@@ -794,12 +795,13 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
           <Workflow size={20} color="var(--accent-cyan)" />
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>One Forward Pass, Start to Finish</h2>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <input type="text" value={testInput} onChange={e => setTestInput(e.target.value)} style={{ flex: 1, fontSize: '0.95rem' }} />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <PromptInput value={testInput} onChange={setTestInput} onSubmit={onRunInspect} style={{ flex: 1, fontSize: '0.95rem' }} />
           <button className="btn-primary" onClick={onRunInspect}>
             <Sparkles size={16} /> Run
           </button>
         </div>
+        <PromptHint />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 4 }}>Follow a token:</span>
           {data.tokenStrings.map((t, i) => (

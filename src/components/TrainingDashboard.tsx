@@ -20,6 +20,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { PromptInput, PromptHint } from './PromptInput';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -552,12 +553,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
                 impact="Sets the starting state for context window embedding and attention lookup."
               />
             </div>
-            <input
-              type="text"
-              value={seedPrompt}
-              onChange={(e) => setSeedPrompt(e.target.value)}
-              style={{ width: '100%', fontSize: '0.9rem' }}
-            />
+            <PromptInput value={seedPrompt} onChange={setSeedPrompt} onSubmit={handleGenerate} style={{ fontSize: '0.9rem' }} />
+            <PromptHint />
           </div>
 
           <div>
