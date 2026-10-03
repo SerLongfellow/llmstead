@@ -9,6 +9,14 @@ export interface OptimizerHyperparams {
   weightDecay: number;
 }
 
+/** Saved optimizer memory (see Optimizer.exportState); matrices are flattened row by row */
+export interface OptimizerState {
+  type: OptimizerType;
+  t: Record<string, number>;
+  m: Record<string, Float64Array>;
+  v: Record<string, Float64Array>;
+}
+
 const DEFAULTS: OptimizerHyperparams = {
   beta1: 0.9,
   beta2: 0.999,
@@ -41,6 +49,31 @@ export class Optimizer {
   /** Number of update steps applied so far to the named parameter */
   public stepsFor(name: string): number {
     return this.t.get(name) ?? 0;
+  }
+
+  /**
+   * The optimizer's memory, as plain arrays that can be saved: Adam's two running averages
+   * (m, v) for every weight, and how many steps each matrix has taken (for bias correction).
+   */
+  public exportState(): OptimizerState {
+    const flat = (M: Matrix) => Float64Array.from(M.flat());
+    return {
+      type: this.type,
+      t: Object.fromEntries(this.t),
+      m: Object.fromEntries([...this.m].map(([k, M]) => [k, flat(M)])),
+      v: Object.fromEntries([...this.v].map(([k, M]) => [k, flat(M)])),
+    };
+  }
+
+  /** Load state saved by exportState. `params` gives each matrix's shape. */
+  public importState(state: OptimizerState, params: Record<string, Matrix>): void {
+    const unflat = (data: Float64Array, like: Matrix): Matrix => {
+      const cols = like[0].length;
+      return like.map((_, r) => Array.from(data.subarray(r * cols, (r + 1) * cols)));
+    };
+    this.t = new Map(Object.entries(state.t));
+    this.m = new Map(Object.entries(state.m).filter(([k]) => params[k]).map(([k, d]) => [k, unflat(d, params[k])]));
+    this.v = new Map(Object.entries(state.v).filter(([k]) => params[k]).map(([k, d]) => [k, unflat(d, params[k])]));
   }
 
   public step(name: string, param: Matrix, grad: Matrix, lr: number): void {

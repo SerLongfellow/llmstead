@@ -24,6 +24,14 @@
     <meta name="twitter:description" content="Train a tiny language model from scratch in your browser and watch every step: tokens, embeddings, attention, and predictions." />
     <meta name="twitter:image" content="https://llmstead.com/og-image.png" />
 
+    <!-- First paint: the theme's background right away (the stylesheet arrives with the app), and
+         with JavaScript on, hide the crawler summary below so it doesn't flash before the app -->
+    <style>
+      html, body { background: #0d1117; color: #e6edf3; color-scheme: dark; }
+      .js .crawler-summary { display: none; }
+    </style>
+    <script>document.documentElement.classList.add('js');</script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -31,7 +39,7 @@
   <body>
     <div id="root">
       <!-- Plain-text summary for crawlers and no-JavaScript visitors. The app replaces it on load. -->
-      <main style="max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: system-ui, sans-serif; line-height: 1.6;">
+      <main class="crawler-summary" style="max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: system-ui, sans-serif; line-height: 1.6;">
         <h1>LLMStead: Raise your own models</h1>
         <p>
           LLMStead builds a tiny transformer, the same kind of model behind modern AI chat assistants, and trains it from

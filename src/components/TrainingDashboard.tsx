@@ -21,6 +21,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { PromptInput, PromptHint, ShortcutKey } from './PromptInput';
+import { SaveStatus, TrainingHistory } from '../persistence';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -52,6 +53,11 @@ interface TrainingDashboardProps {
   onChangeLearningRate: (lr: number) => void;
   onChangeOptimizer: (opt: TransformerConfig['optimizer']) => void;
   visible: boolean; // whether the Train tab is showing (it stays mounted while hidden)
+  /** Chart and step count restored from the autosave, if the model was restored too */
+  initialHistory: TrainingHistory | null;
+  /** Called whenever the history changes, so App can autosave it with the model */
+  onHistoryChange: (history: TrainingHistory) => void;
+  saveStatus: SaveStatus;
 }
 
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
@@ -64,17 +70,24 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   onChangeLearningRate,
   onChangeOptimizer,
   visible,
+  initialHistory,
+  onHistoryChange,
+  saveStatus,
 }) => {
   const [isTraining, setIsTraining] = useState<boolean>(false);
   useEffect(() => {
     onTrainingChange?.(isTraining);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTraining]);
-  const [stepCount, setStepCount] = useState<number>(0);
-  const [lossHistory, setLossHistory] = useState<number[]>([]);
-  const [valLossHistory, setValLossHistory] = useState<(number | null)[]>([]);
-  const [stepLabels, setStepLabels] = useState<string[]>([]);
-  
+  const [stepCount, setStepCount] = useState<number>(() => initialHistory?.stepCount ?? 0);
+  const [lossHistory, setLossHistory] = useState<number[]>(() => initialHistory?.lossHistory ?? []);
+  const [valLossHistory, setValLossHistory] = useState<(number | null)[]>(() => initialHistory?.valLossHistory ?? []);
+  const [stepLabels, setStepLabels] = useState<string[]>(() => initialHistory?.stepLabels ?? []);
+  useEffect(() => {
+    onHistoryChange({ stepCount, lossHistory, valLossHistory, stepLabels });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepCount, lossHistory, valLossHistory, stepLabels]);
+
   // Sampling controls
   const [seedPrompt, setSeedPrompt] = useState<string>(() => samplePromptFor(selectedDataset));
   const [temperature, setTemperature] = useState<number>(0.7);
@@ -92,7 +105,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   const valTokens = useMemo(() => tokenizer.encode(split.valText).tokens, [tokenizer, split]);
 
   // Refs so the timer callback always sees the latest values (no stale closures)
-  const stepRef = useRef<number>(0);
+  const stepRef = useRef<number>(initialHistory?.stepCount ?? 0);
   const latest = useRef({ model, config, trainTokens, valTokens });
   latest.current = { model, config, trainTokens, valTokens };
 
@@ -104,8 +117,12 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     setStepLabels([]);
   };
 
-  // A new model instance means fresh random weights — the old curve no longer applies
+  // A new model instance means fresh random weights — the old curve no longer applies.
+  // (Not on mount: the first model may be a restored one whose history was just loaded.)
+  const lastModel = useRef(model);
   useEffect(() => {
+    if (model === lastModel.current) return;
+    lastModel.current = model;
     setIsTraining(false);
     resetHistory();
     setSlowStep(null);
@@ -372,6 +389,10 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
               <p style={{ fontSize: '0.95rem', fontWeight: 700 }}>Training on: {selectedDataset.name}</p>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
                 First {trainTokens.length} tokens for training · last {valTokens.length} held out for validation
+                {saveStatus?.kind === 'saved' && <> · Saved in this browser at {new Date(saveStatus.at).toLocaleTimeString()}</>}
+                {saveStatus?.kind === 'unavailable' && (
+                  <span style={{ color: 'var(--accent-amber)' }}> · This browser isn't letting the site save (private window?), so progress won't survive a reload</span>
+                )}
               </p>
             </div>
           </div>

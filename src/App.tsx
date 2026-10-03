@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { SavedSession, SaveStatus, TrainingHistory, loadSession, saveSession, clearSession } from './persistence';
 import { DatasetOption, StepInspectionData, TransformerConfig } from './types';
 import { MicroTransformer } from './engine/transformer';
 import { BPETokenizer } from './engine/bpeTokenizer';
@@ -10,7 +11,7 @@ import { PipelineView } from './components/PipelineView';
 import { StartView } from './components/StartView';
 import { GuideStrip } from './components/GuideStrip';
 import { WhatsNextView } from './components/WhatsNextView';
-import { Github } from 'lucide-react';
+import { Github, History, X } from 'lucide-react';
 
 // Other places to learn how transformers work, linked from the footer
 const RESOURCES = [
@@ -26,23 +27,53 @@ const RESOURCES = [
   },
 ];
 
+const DEFAULT_CONFIG: TransformerConfig = {
+  vocabSize: 120,
+  contextWindow: 16,
+  dModel: 32,
+  numHeads: 2,
+  numLayers: 2,
+  mlpRatio: 4,
+  learningRate: 0.001,
+  optimizer: 'adamw',
+};
+
+/** How often to autosave while something has changed (also on pause and when the tab is hidden) */
+const AUTOSAVE_MS = 10_000;
+
+/** Longest the first render waits for the web fonts before showing the app anyway */
+const FONT_WAIT_MS = 600;
+
+/** Reads the autosave (if any) once, then renders the app starting from it */
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('start');
+  const [boot, setBoot] = useState<{ saved: SavedSession | null } | null>(null);
+  useEffect(() => {
+    // Also start the web fonts loading now and wait for them (briefly), so the app doesn't first
+    // render in a fallback font and then reflow when Inter arrives. Never wait more than FONT_WAIT_MS.
+    const fonts = Promise.race([
+      Promise.all(['400 1em Inter', '700 1em Inter', '400 1em "JetBrains Mono"'].map(f => document.fonts?.load(f))).catch(() => {}),
+      new Promise(resolve => setTimeout(resolve, FONT_WAIT_MS)),
+    ]);
+    Promise.all([loadSession(), fonts]).then(([saved]) => setBoot({ saved }));
+  }, []);
+  // Loading takes a few milliseconds; show just the page background (set in index.html) rather
+  // than flash the defaults, then the app fades in (.app-shell)
+  if (!boot) return null;
+  return <Workbench saved={boot.saved} />;
+}
+
+
+type RestoreNote = { kind: 'restored'; step: number; savedAt: number } | { kind: 'discarded' };
+
+function Workbench({ saved }: { saved: SavedSession | null }) {
   // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches)
-  const [datasets, setDatasets] = useState<DatasetOption[]>(SAMPLE_DATASETS);
-  const [selectedDataset, setSelectedDataset] = useState<DatasetOption>(SAMPLE_DATASETS[0]);
-  
+  const [datasets, setDatasets] = useState<DatasetOption[]>(() => [...SAMPLE_DATASETS, ...(saved?.customDatasets ?? [])]);
+  const [selectedDataset, setSelectedDataset] = useState<DatasetOption>(
+    () => datasets.find(d => d.id === saved?.selectedDatasetId) ?? SAMPLE_DATASETS[0]
+  );
+
   // Transformer Hyperparameters
-  const [config, setConfig] = useState<TransformerConfig>({
-    vocabSize: 120,
-    contextWindow: 16,
-    dModel: 32,
-    numHeads: 2,
-    numLayers: 2,
-    mlpRatio: 4,
-    learningRate: 0.001,
-    optimizer: 'adamw'
-  });
+  const [config, setConfig] = useState<TransformerConfig>(() => saved?.config ?? DEFAULT_CONFIG);
 
   // BPE Tokenizer Engine instance, trained on the selected dataset. config.vocabSize is the
   // *target* vocab size (set in Setup). Rebuilt (never mutated) when either changes, and
@@ -62,21 +93,46 @@ export default function App() {
     [config, actualVocab]
   );
 
+  // Restore the autosaved weights, but only if they still fit: the rebuilt tokenizer must have the
+  // same vocabulary (a site update can change a dataset) and every matrix the same shape.
+  const restoredModel = useRef<MicroTransformer | null>(null);
+  const [restoreNote, setRestoreNote] = useState<RestoreNote | null>(() => {
+    if (!saved) return null;
+    const vocabulary = Array.from({ length: actualVocab }, (_, id) => tokenizer.decode([id]));
+    const sameVocab = vocabulary.length === saved.vocabulary.length && vocabulary.every((t, i) => t === saved.vocabulary[i]);
+    const m = new MicroTransformer({ ...config, vocabSize: actualVocab });
+    if (!sameVocab || !m.importState(saved.model)) return { kind: 'discarded' };
+    restoredModel.current = m;
+    return { kind: 'restored', step: saved.history.stepCount, savedAt: saved.savedAt };
+  });
+  const initialHistory = restoredModel.current ? saved!.history : null;
+  // Coming back to a model you've trained? Open on the Train tab, where you left off
+  const [activeTab, setActiveTab] = useState<string>(() => (initialHistory && initialHistory.stepCount > 0 ? 'training' : 'start'));
+  // An untrained save (settings only) restores silently; "restored from step #0" says nothing useful
+  useEffect(() => {
+    if (restoreNote?.kind === 'restored' && restoreNote.step === 0) setRestoreNote(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Micro-Transformer Engine instance. Depends ONLY on shape-changing settings, so
   // tweaking learning rate or optimizer never throws away trained weights.
+  // The first one built is the restored model, if there is one.
   const { contextWindow, dModel, numHeads, numLayers, mlpRatio } = config;
   const model = useMemo(
-    () => new MicroTransformer({ ...config, vocabSize: actualVocab }),
+    () => restoredModel.current ?? new MicroTransformer({ ...config, vocabSize: actualVocab }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [actualVocab, contextWindow, dModel, numHeads, numLayers, mlpRatio, tokenizer]
   );
+  useEffect(() => {
+    restoredModel.current = null; // later settings changes build fresh models
+  }, []);
 
   // Optimizer is swappable in place (resets Adam moments, keeps weights)
   useEffect(() => {
     model.setOptimizer(config.optimizer);
   }, [model, config.optimizer]);
 
-  const [testSentence, setTestSentence] = useState<string>(() => samplePromptFor(SAMPLE_DATASETS[0]));
+  const [testSentence, setTestSentence] = useState<string>(() => saved?.testSentence ?? samplePromptFor(SAMPLE_DATASETS[0]));
 
   // Step Inspection State
   const [inspectionData, setInspectionData] = useState<StepInspectionData>(() => {
@@ -130,8 +186,63 @@ export default function App() {
 
   const [isTraining, setIsTraining] = useState<boolean>(false);
 
+  // ── Autosave ──────────────────────────────────────────────────────────────
+  // Anything that changes the session marks it dirty; it's written every AUTOSAVE_MS, when
+  // training pauses, and when the tab is hidden or closed (a write during unload isn't
+  // guaranteed to finish, so the periodic save is the safety net).
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
+  const history = useRef<TrainingHistory>(initialHistory ?? { stepCount: 0, lossHistory: [], valLossHistory: [], stepLabels: [] });
+  const dirty = useRef(false);
+  const savingOff = useRef(false);
+  const latest = useRef({ config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab });
+  latest.current = { config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab };
+
+  const saveNow = () => {
+    if (!dirty.current || savingOff.current) return;
+    dirty.current = false;
+    const s = latest.current;
+    // exportState copies the weights synchronously, so this is a consistent snapshot even mid-training
+    saveSession({
+      config: s.config,
+      selectedDatasetId: s.selectedDataset.id,
+      customDatasets: s.datasets.filter(d => !SAMPLE_DATASETS.includes(d)),
+      vocabulary: Array.from({ length: s.actualVocab }, (_, id) => s.tokenizer.decode([id])),
+      testSentence: s.testSentence,
+      model: s.model.exportState(),
+      history: history.current,
+    }).then(ok => setSaveStatus(ok ? { kind: 'saved', at: Date.now() } : { kind: 'unavailable' }));
+  };
+
+  const onHistoryChange = (h: TrainingHistory) => {
+    history.current = h;
+    dirty.current = true;
+  };
+  useEffect(() => {
+    dirty.current = true;
+  }, [config, datasets, selectedDataset, testSentence, model]);
+  useEffect(() => {
+    if (!isTraining) saveNow();
+  }, [isTraining]);
+  useEffect(() => {
+    const timer = window.setInterval(saveNow, AUTOSAVE_MS);
+    const onVisibility = () => document.visibilityState === 'hidden' && saveNow();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', saveNow);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', saveNow);
+    };
+  }, []);
+
+  const startFresh = async () => {
+    savingOff.current = true; // so the reload's pagehide doesn't save it all again
+    await clearSession();
+    window.location.reload();
+  };
+
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
+    <div className="app-shell" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -139,6 +250,42 @@ export default function App() {
       />
 
       <main style={{ minHeight: '80vh' }}>
+        {restoreNote && (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 16px', marginBottom: 20, borderRadius: 10,
+              fontSize: '0.85rem', color: 'var(--text-muted)', background: 'var(--surface-inset)', border: '1px solid var(--border-color)',
+            }}
+          >
+            <History size={16} color="var(--accent-emerald)" style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 200 }}>
+              {restoreNote.kind === 'restored' ? (
+                <>
+                  <b style={{ color: 'var(--text-main)' }}>Welcome back.</b> Your model was restored from step #{restoreNote.step.toLocaleString()}
+                  {' '}(saved in this browser {new Date(restoreNote.savedAt).toLocaleString()}).
+                </>
+              ) : (
+                <>
+                  Your saved model couldn't be restored: the site's data has changed since it was saved, so its weights no longer
+                  match the vocabulary. You're starting with a fresh model.
+                </>
+              )}
+            </span>
+            {restoreNote.kind === 'restored' && (
+              <button className="btn-secondary" onClick={startFresh} style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
+                Start fresh
+              </button>
+            )}
+            <button
+              onClick={() => setRestoreNote(null)}
+              aria-label="Dismiss"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', display: 'flex', padding: 2 }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {activeTab === 'start' && (
           <StartView onNavigate={setActiveTab} guidesHidden={guidesHidden} onShowGuides={() => setGuides(false)} />
         )}
@@ -186,6 +333,9 @@ export default function App() {
             onChangeLearningRate={(learningRate) => setConfig(prev => ({ ...prev, learningRate }))}
             onChangeOptimizer={(optimizer) => setConfig(prev => ({ ...prev, optimizer }))}
             visible={activeTab === 'training'}
+            initialHistory={initialHistory}
+            onHistoryChange={onHistoryChange}
+            saveStatus={saveStatus}
           />
         </div>
 

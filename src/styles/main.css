@@ -219,6 +219,18 @@ input[type="text"]:focus, textarea:focus, select:focus {
   z-index: 10;
 }
 
+/* The app eases in once (after the autosave has loaded) instead of popping onto the page */
+.app-shell {
+  animation: appFadeIn 0.2s ease-out;
+}
+@keyframes appFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell { animation: none; }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }

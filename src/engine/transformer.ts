@@ -1,6 +1,12 @@
 import { LayerInspection, StepInspectionData, TransformerConfig } from '../types';
 import { Matrix, MatrixMath } from './tensor';
-import { Optimizer, OptimizerType } from './optimizer';
+import { Optimizer, OptimizerState, OptimizerType } from './optimizer';
+
+/** A trained model's learned numbers (see MicroTransformer.exportState) */
+export interface ModelState {
+  weights: Record<string, Float64Array>;
+  optimizer: OptimizerState;
+}
 
 /** Settings that change the shape of the weight matrices. Changing any of these requires a fresh model. */
 export type ArchitectureConfig = Pick<
@@ -300,6 +306,43 @@ export class MicroTransformer {
       params[`wMlp2.${l}`] = this.wMlp2[l];
     }
     return params;
+  }
+
+  /**
+   * Everything training has changed, as plain typed arrays that can be stored (the app keeps
+   * it in IndexedDB) and loaded back exactly: every weight matrix, flattened row by row, plus
+   * the optimizer's memory. The architecture itself lives in `config`.
+   */
+  public exportState(): ModelState {
+    const weights: Record<string, Float64Array> = {};
+    for (const [name, M] of Object.entries(this.getParameters())) weights[name] = Float64Array.from(M.flat());
+    return { weights, optimizer: this.optimizer.exportState() };
+  }
+
+  /**
+   * Load a state from exportState into this model, overwriting its weights in place. Every
+   * matrix must exist with the same size, or nothing is changed and this returns false.
+   */
+  public importState(state: ModelState): boolean {
+    const params = this.getParameters();
+    const names = Object.keys(params);
+    if (names.length !== Object.keys(state.weights).length) return false;
+    for (const name of names) {
+      const data = state.weights[name];
+      if (!data || data.length !== params[name].length * params[name][0].length) return false;
+    }
+    for (const name of names) {
+      const M = params[name];
+      const data = state.weights[name];
+      const cols = M[0].length;
+      for (let r = 0; r < M.length; r++) {
+        const row = M[r];
+        for (let c = 0; c < cols; c++) row[c] = data[r * cols + c];
+      }
+    }
+    // Adam's memory only makes sense for the same optimizer; otherwise it starts fresh
+    if (state.optimizer.type === this.optimizer.type) this.optimizer.importState(state.optimizer, params);
+    return true;
   }
 
   /**
