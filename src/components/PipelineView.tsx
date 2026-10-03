@@ -118,6 +118,60 @@ const Explain: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: '4px 0 12px' }}>{children}</p>
 );
 
+/** Spells out a stage's formula one symbol at a time */
+const FormulaKey: React.FC<{ items: [symbol: string, meaning: React.ReactNode][] }> = ({ items }) => (
+  <div style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 8, background: 'var(--surface-inset)', border: '1px solid var(--border-color)' }}>
+    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+      Reading the formula
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(70px, max-content) 1fr', gap: '5px 14px', fontSize: '0.8rem', lineHeight: 1.5 }}>
+      {items.map(([symbol, meaning]) => (
+        <React.Fragment key={symbol}>
+          <code className="font-mono" style={{ color: 'var(--primary)', whiteSpace: 'nowrap' }}>{symbol}</code>
+          <span style={{ color: 'var(--text-muted)' }}>{meaning}</span>
+        </React.Fragment>
+      ))}
+    </div>
+  </div>
+);
+
+/** Tiny plot of GELU (solid) against the hard "negatives to 0" switch (dashed), for the MLP formula key */
+const GeluCurve: React.FC = () => {
+  const W = 180, H = 70, xMin = -4, xMax = 3, yMin = -0.5, yMax = 3;
+  const px = (x: number) => ((x - xMin) / (xMax - xMin)) * W;
+  const py = (y: number) => H - ((y - yMin) / (yMax - yMin)) * H;
+  const gelu = (x: number) => 0.5 * x * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * (x + 0.044715 * x ** 3)));
+  const xs = Array.from({ length: 71 }, (_, i) => xMin + (i / 70) * (xMax - xMin));
+  const path = (fn: (x: number) => number) => xs.map((x, i) => `${i ? 'L' : 'M'}${px(x).toFixed(1)},${py(fn(x)).toFixed(1)}`).join(' ');
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+      <svg width={W} height={H} style={{ display: 'block', overflow: 'visible' }} aria-label="GELU curve">
+        <line x1={0} x2={W} y1={py(0)} y2={py(0)} stroke="var(--border-color)" />
+        <line x1={px(0)} x2={px(0)} y1={0} y2={H} stroke="var(--border-color)" />
+        <path d={path(x => Math.max(0, x))} fill="none" stroke="var(--text-dim)" strokeDasharray="3 3" />
+        <path d={path(gelu)} fill="none" stroke="var(--primary)" strokeWidth={2} />
+      </svg>
+      <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
+        → score going in, ↑ value coming out
+        <br />
+        <span style={{ color: 'var(--primary)' }}>━ GELU</span> · ┅ hard switch (called ReLU)
+      </span>
+    </div>
+  );
+};
+
+/** A short row of outside links for readers who want the full story */
+const GoDeeper: React.FC<{ links: { label: string; url: string }[] }> = ({ links }) => (
+  <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', margin: '0 0 12px', display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+    <span>Go deeper:</span>
+    {links.map(l => (
+      <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>
+        {l.label}
+      </a>
+    ))}
+  </p>
+);
+
 const SubHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '28px 0 10px', paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>
     {children}
@@ -289,6 +343,13 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
       return (
         <>
           <SectionTitle step="Stage 2" title="Tokenize" formula="text → [token IDs]" />
+          <FormulaKey
+            items={[
+              ['text', 'the prompt you typed, as plain characters'],
+              ['→', 'the tokenizer splits it into pieces it learned, applying its merges in the order it learned them'],
+              ['[token IDs]', `a list of whole numbers, one per piece. Each is a row number in the vocabulary (0 to ${config.vocabSize - 1}); this is all the model ever sees of the text`],
+            ]}
+          />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {data.tokenStrings.map((t, i) => (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
@@ -333,6 +394,14 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
       return (
         <>
           <SectionTitle step="Stage 3" title="Embed" formula="x = E_token[id] + E_pos[position]" />
+          <FormulaKey
+            items={[
+              ['x', `the token's vector: a list of ${config.dModel} numbers (d_model). Every later stage transforms it`],
+              ['E_token[id]', `row "id" of the token embedding table (${config.vocabSize} rows × ${config.dModel} numbers, one row per vocabulary token)`],
+              ['E_pos[position]', `row "position" of the position table (${config.contextWindow} rows, one per slot in the context window)`],
+              ['+', 'add the two lists number by number, so the vector says both what the token is and where it sits'],
+            ]}
+          />
           <Explain>
             Each token ID picks out one row of a learned table, turning the token into a list of {config.dModel} numbers. A
             second table adds where the token sits in the sequence, since attention on its own doesn't know word order.
@@ -393,13 +462,31 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
           <SectionTitle step={`Stage ${4 + l}`} title={`Transformer block ${l + 1}`} />
           <Explain>
             A block has two halves. <b>Attention</b> is the only place tokens exchange information: each token pulls in
-            information from earlier tokens. The <b>MLP</b> then processes each token on its own. Following{' '}
-            <TokenChip text={focusTok} active /> through this block:
+            information from earlier tokens. The <b>MLP</b> then processes each token on its own. After each half, the result
+            is added back onto the token's vector and normalized. Stacking blocks lets later ones build on what earlier ones
+            worked out. Following <TokenChip text={focusTok} active /> through this block:
           </Explain>
+          <GoDeeper
+            links={[
+              { label: 'The Illustrated Transformer (Jay Alammar)', url: 'https://jalammar.github.io/illustrated-transformer/' },
+              { label: 'Attention, step by step (3Blue1Brown)', url: 'https://www.3blue1brown.com/lessons/attention' },
+            ]}
+          />
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div>
-              <SectionTitle step="a" title="Attention: which earlier tokens does it look at?" formula="softmax(Q·Kᵀ / √d) · V" />
+              <SectionTitle step="a" title="Attention: which earlier tokens does it look at?" formula="softmax(Q·Kᵀ / √d_head) · V" />
+              <FormulaKey
+                items={[
+                  ['·', 'matrix multiplication: each output number is a dot product (multiply two lists number by number, then sum)'],
+                  ['Q, K, V', `queries, keys and values: the token vectors multiplied by three learned matrices (Q = x·W_Q, and so on). One row per token, ${config.dModel / config.numHeads} numbers each, separately for every head`],
+                  ['Q·Kᵀ', 'every query dotted with every key: a table of raw scores, one per (token, earlier token) pair. ᵀ (transpose) flips K so the shapes line up'],
+                  ['/ √d_head', `divide by √${config.dModel / config.numHeads}. Dot products of longer vectors come out bigger; without this, softmax would lock onto one token and stop learning`],
+                  ['softmax', 'turns each row of scores into weights that are positive and add up to 100%: eˢ / Σeˢ. Future tokens are masked out first'],
+                  ['· V', "a weighted average of the value vectors, using those weights. That's the head's output"],
+                  ['(afterwards)', `the ${config.numHeads} head outputs are placed side by side and multiplied by one more matrix, W_O, to get back to ${config.dModel} numbers`],
+                ]}
+              />
               {layer.attentionWeights.map((head, h) => {
                 const row = head[f].slice(0, f + 1);
                 const maxW = Math.max(...row, 1e-9);
@@ -458,7 +545,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
                 <VectorStrip label={<>Query of <TokenChip text={focusTok} active /></>} note={`Q = x · W_Q, head ${head + 1}`} vector={layer.queries[head][f]} />
               </div>
-              <DataTable headers={['Key token', 'Key vector', 'Raw score (q·k / √d)', 'Weight (softmax)']}>
+              <DataTable headers={['Key token', 'Key vector', 'Raw score (q·k / √d_head)', 'Weight (softmax)']}>
                 {data.tokenStrings.slice(0, f + 1).map((t, j) => (
                   <FocusRow key={j} active={j === f} onClick={() => setFocus(j)}>
                     <td style={td}><TokenChip text={t} active={j === f} /></td>
@@ -488,21 +575,92 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <SectionTitle step="b" title="Add & normalize" formula="LN(x + attention)" />
+              <FormulaKey
+                items={[
+                  ['x', 'the vector that entered this block'],
+                  ['+ attention', "add attention's output number by number (the residual connection)"],
+                  ['LN', "layer normalization: subtract the vector's average from every number, then divide by their standard deviation. This model has no learned scale or shift after that"],
+                ]}
+              />
+              <Explain>
+                Attention's output doesn't replace the token's vector; it's <b>added</b> to it. This is a <b>residual
+                connection</b>: each half of the block only has to learn an adjustment, and the original information passes
+                through untouched unless something changes it. That also gives gradients a direct path back to early layers,
+                which is what makes deep stacks trainable. <b>Layer normalization</b> then rescales the vector to mean 0 and
+                spread 1, so values don't grow or shrink out of control from block to block. (This model normalizes after
+                adding, like the original Transformer; GPT-2 and most newer models normalize before each half instead.)
+              </Explain>
               <VectorStrip label="After attention" note="added to the input, then normalized" vector={layer.norm1Output[f]} />
+              <GoDeeper
+                links={[
+                  { label: 'The residual stream (Anthropic, Transformer Circuits)', url: 'https://transformer-circuits.pub/2021/framework/index.html' },
+                  { label: 'Residual networks paper (He et al.)', url: 'https://arxiv.org/abs/1512.03385' },
+                  { label: 'Layer normalization paper', url: 'https://arxiv.org/abs/1607.06450' },
+                ]}
+              />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <SectionTitle step="c" title="MLP" formula="GELU(x · W₁) · W₂" />
+              <FormulaKey
+                items={[
+                  ['x', 'the vector after step b'],
+                  ['W₁', `a ${config.dModel} × ${config.dModel * config.mlpRatio} matrix. Each column is one neuron's pattern, so x · W₁ gives every neuron's match score`],
+                  [
+                    'GELU',
+                    <>
+                      A soft on/off switch applied to each neuron's score separately. Positive scores (a match) pass through almost
+                      unchanged; negative scores (no match) are squashed to about 0, so that neuron stays quiet. It's a smoothed
+                      version of the simplest switch, “keep positives, turn negatives into 0”. The smooth curve gives training a
+                      gentle slope to follow instead of a sharp corner.
+                      <GeluCurve />
+                    </>,
+                  ],
+                  ['W₂', `a ${config.dModel * config.mlpRatio} × ${config.dModel} matrix. Each row is what one neuron adds to the vector when it fires`],
+                ]}
+              />
+              <Explain>
+                <b>MLP</b> stands for multi-layer perceptron, the classic neural network: multiply by a weight matrix, apply a
+                nonlinearity, multiply by another. (It's also called the feed-forward layer.) Attention gathered context from
+                other tokens; the MLP now <i>thinks about</i> that context, one token at a time, with no view of the others.
+              </Explain>
+              <Explain>
+                <b>Why a hidden layer?</b> The first matrix, W₁, expands the {config.dModel}-number vector into{' '}
+                {layer.mlpHidden[f].length} numbers. Each hidden number is a <b>neuron</b>: it measures how strongly the vector
+                matches one pattern W₁ has learned. Going {config.mlpRatio}× wider gives the model far more pattern detectors
+                than its vector has dimensions ({config.mlpRatio}× is the convention from the original Transformer and GPT).{' '}
+                <b>GELU</b> then switches off neurons that didn't match (negative values go to about 0). That bend is essential:
+                without it the two matrix multiplies would collapse into one, and stacking them would add nothing. Finally W₂
+                maps the active neurons back down to {config.dModel} numbers, each neuron contributing its own learned
+                adjustment. In large models, many neurons seem to act like stored facts: “if the context looks like this, push
+                the prediction that way.”
+              </Explain>
               <VectorStrip
                 label="Hidden layer"
-                note={`${layer.mlpHidden[f].length} neurons (${config.mlpRatio}× wider)`}
+                note={`${layer.mlpHidden[f].length} neurons (${config.mlpRatio}× wider), after GELU`}
                 vector={layer.mlpHidden[f]}
               />
               <VectorStrip label="MLP output" note={`back down to ${config.dModel}`} vector={layer.mlpOutput[f]} />
+              <Explain>
+                In the hidden layer, bright cyan cells are neurons that fired for this token; dark ones stayed off (GELU
+                leaves at most a faint negative). Most of a block's weights live here: the MLP has {2 * config.mlpRatio}·d²
+                weights per block (d = {config.dModel}) versus 4·d² for attention.
+              </Explain>
+              <GoDeeper
+                links={[
+                  { label: 'How might LLMs store facts (3Blue1Brown)', url: 'https://www.3blue1brown.com/lessons/mlp' },
+                  { label: 'Feed-forward layers are key-value memories (Geva et al.)', url: 'https://arxiv.org/abs/2012.14913' },
+                  { label: 'GELU paper', url: 'https://arxiv.org/abs/1606.08415' },
+                ]}
+              />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <SectionTitle step="d" title="Add & normalize → block output" formula="LN(x + MLP)" />
+              <Explain>
+                The same residual add and normalization as in step b, this time around the MLP: x is the vector after step b,
+                and MLP is the MLP's output.
+              </Explain>
               <VectorStrip label="Block output" note={l + 1 < config.numLayers ? `enters Block ${l + 2}` : 'goes to the output head'} vector={layer.norm2Output[f]} />
               <Explain>
                 Similarity between this token's vector going in and coming out: <b className="font-mono">{similarity.toFixed(2)}</b>{' '}
@@ -522,6 +680,14 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
       return (
         <>
           <SectionTitle step={`Stage ${4 + config.numLayers}`} title="Score every token in the vocabulary" formula="softmax(LN(x) · W_head)" />
+          <FormulaKey
+            items={[
+              ['x', `the last block's output for this token (${config.dModel} numbers)`],
+              ['LN', "one final layer norm. Here it barely changes anything, since each block already ends with one; in GPT-style models that normalize before each half, it's essential"],
+              ['W_head', `a ${config.dModel} × ${config.vocabSize} matrix with one column per vocabulary token. x · W_head gives each token a raw score, called a logit`],
+              ['softmax', 'turns the logits into probabilities that add up to 100%: eˢ / Σeˢ. Higher score, higher probability'],
+            ]}
+          />
           <div
             style={{
               margin: '4px 0 12px',
