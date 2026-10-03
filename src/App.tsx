@@ -11,6 +11,20 @@ import { StartView } from './components/StartView';
 import { GuideStrip } from './components/GuideStrip';
 import { Github } from 'lucide-react';
 
+// Other places to learn how transformers work, linked from the footer
+const RESOURCES = [
+  {
+    name: 'Transformer Explainer',
+    url: 'https://poloclub.github.io/transformer-explainer/',
+    description: 'Interactive visualization of GPT-2 running live in your browser (Georgia Tech Polo Club)',
+  },
+  {
+    name: 'Transformers from Scratch',
+    url: 'https://brandonrohrer.com/transformers.html',
+    description: 'A step-by-step written walkthrough of how transformers work, by Brandon Rohrer',
+  },
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('start');
   // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches)
@@ -128,8 +142,8 @@ export default function App() {
           <>
             {!guidesHidden && (
               <GuideStrip step={1} title="Set up your model" next={{ label: 'Next: Train', onClick: () => setActiveTab('training') }} onHide={() => setGuides(true)}>
-                Choose a dataset, then adjust the tokenizer and model size if you like. The defaults train well. Changing anything
-                marked "resets the model" starts training over.
+                Choose a dataset, then adjust the tokenizer and model size if you like. The defaults train well. Changing any setting
+                here resets the model and starts training over.
               </GuideStrip>
             )}
             <SetupView
@@ -194,6 +208,14 @@ export default function App() {
 
       <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
         <p>LLMStead • Raise your own models: a tiny transformer, built and trained from scratch in your browser</p>
+        <p style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 14px' }}>
+          <span>Additional resources:</span>
+          {RESOURCES.map(r => (
+            <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" title={r.description} style={{ color: 'var(--text-muted)' }}>
+              {r.name}
+            </a>
+          ))}
+        </p>
         <p style={{ marginTop: '8px' }}>
           <a
             href="https://github.com/SerLongfellow/llmstead"

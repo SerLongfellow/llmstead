@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DatasetOption, TransformerConfig } from '../types';
 import { BPETokenizer } from '../engine/bpeTokenizer';
-import { BookOpen, Binary, Sliders, Info, Plus, ChevronRight, Ruler } from 'lucide-react';
+import { BookOpen, Binary, Sliders, Info, Plus, ChevronRight, Ruler, RotateCcw } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 import { ScaleComparison } from './ScaleComparison';
 import { referenceHint, FRONTIER_NOTE } from '../engine/referenceModels';
@@ -28,25 +28,18 @@ const Section: React.FC<{
   step: number;
   icon: React.ReactNode;
   title: string;
-  note: string;
-  resets: boolean;
   children: React.ReactNode;
-}> = ({ step, icon, title, note, resets, children }) => (
+}> = ({ step, icon, title, children }) => (
   <div className="glass-panel" style={{ padding: '24px' }}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span
-          className="font-mono"
-          style={{ width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, background: 'var(--primary)', color: '#ffffff' }}
-        >
-          {step}
-        </span>
-        {icon}
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{title}</h2>
-      </div>
-      <span className={resets ? 'badge badge-amber' : 'badge badge-emerald'} style={{ fontSize: '0.7rem' }}>
-        {note}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+      <span
+        className="font-mono"
+        style={{ width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, background: 'var(--primary)', color: '#ffffff' }}
+      >
+        {step}
       </span>
+      {icon}
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{title}</h2>
     </div>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>{children}</div>
   </div>
@@ -177,8 +170,17 @@ export const SetupView: React.FC<SetupViewProps> = ({
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start' }}>
       {/* Left: the four setup steps, in the order you'd build a model */}
       <div style={{ flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="glass-panel" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <RotateCcw size={20} color="var(--accent-amber)" />
+          <div>
+            <p style={{ fontSize: '0.95rem', fontWeight: 700 }}>Changing any setting resets the model</p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+              New data, vocabulary or shape means fresh weights, so training starts over.
+            </p>
+          </div>
+        </div>
         {/* 1. Data */}
-        <Section step={1} icon={<BookOpen size={20} color="var(--accent-purple)" />} title="Data" note="Changing resets the model" resets>
+        <Section step={1} icon={<BookOpen size={20} color="var(--accent-purple)" />} title="Data">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
               The text the model learns from. The tokenizer is also built from it, and the last 15% is held out to measure
@@ -265,7 +267,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
         </Section>
 
         {/* 2. Tokenizer */}
-        <Section step={2} icon={<Binary size={20} color="var(--accent-rose)" />} title="Tokenizer" note="Changing resets the model" resets>
+        <Section step={2} icon={<Binary size={20} color="var(--accent-rose)" />} title="Tokenizer">
           <SliderRow
             label="Vocabulary Size (V)"
             reference={referenceHint('vocabSize')}
@@ -290,7 +292,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
         </Section>
 
         {/* 3. Architecture */}
-        <Section step={3} icon={<Sliders size={20} color="var(--primary)" />} title="Architecture" note="Changing resets the model" resets>
+        <Section step={3} icon={<Sliders size={20} color="var(--primary)" />} title="Architecture">
           <SliderRow
             label="Embedding Dimension (d_model)"
             reference={referenceHint('dModel')}
