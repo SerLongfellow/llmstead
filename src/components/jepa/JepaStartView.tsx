@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowRight, FlaskConical, Info } from 'lucide-react';
 import { GoDeeper } from '../GoDeeper';
+import { JepaFlow } from './JepaFlow';
 
 interface JepaStartViewProps {
   onNavigate: (tab: string) => void;
@@ -79,28 +80,31 @@ export const JepaStartView: React.FC<JepaStartViewProps> = ({ onNavigate, guides
     {/* How it works */}
     <div className="glass-panel" style={{ padding: '24px 28px' }}>
       <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 14 }}>How it works</h3>
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-        {[
-          { title: 'Context encoder', text: 'Sees only the visible patches and turns each into an embedding.', color: 'var(--primary)' },
-          { title: 'Predictor', text: 'Given those embeddings and where the hidden patches are, guesses each hidden patch\'s embedding.', color: 'var(--accent-purple)' },
-          { title: 'Target encoder', text: 'Sees the whole image and produces the "right answers" for the hidden patches.', color: 'var(--accent-amber)' },
-          { title: 'Loss', text: 'How far each guess is from its answer. Training shrinks it.', color: 'var(--accent-rose)' },
-        ].map((b, i) => (
-          <React.Fragment key={b.title}>
-            {i > 0 && <ArrowRight size={18} color="var(--text-dim)" style={{ alignSelf: 'center', flexShrink: 0 }} />}
-            <div style={{ flex: '1 1 160px', padding: '12px 14px', borderRadius: 8, background: 'var(--surface-inset)', borderTop: `3px solid ${b.color}` }}>
-              <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 4 }}>{b.title}</p>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{b.text}</p>
-            </div>
-          </React.Fragment>
-        ))}
+      <div style={{ marginBottom: 16 }}>
+        <JepaFlow />
       </div>
+      <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 10 }}>
+        There are two separate paths, and they only meet at the loss. The predictor never feeds the target encoder: the target
+        encoder works on the whole image by itself, in parallel, to produce the answers the guesses are scored against.
+      </p>
       <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
         <b style={{ color: 'var(--text-main)' }}>The catch:</b> the answers come from a network that is also learning. If training
         could change both sides freely, the easiest way to get a perfect score would be to give every image the same embedding.
         That's called <b style={{ color: 'var(--text-main)' }}>collapse</b>. I-JEPA prevents it with two tricks: the loss never
         trains the target encoder (<i>stop-gradient</i>), and the target encoder is a slowly moving average of the context
         encoder (<i>EMA</i>). You can switch both off and watch what happens.
+      </p>
+      <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6, marginTop: 10 }}>
+        <b style={{ color: 'var(--text-main)' }}>What you keep:</b> only an encoder. Once training is done, the predictor and the
+        second encoder are thrown away; they exist to create the training signal. The encoder's embeddings are what later tasks
+        use. (In a <i>world model</i>, the predictor becomes the valuable part instead.{' '}
+        <button
+          onClick={() => onNavigate('next')}
+          style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary)', cursor: 'pointer', font: 'inherit' }}
+        >
+          More in What's next →
+        </button>
+        )
       </p>
     </div>
 

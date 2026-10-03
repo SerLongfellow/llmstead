@@ -4,6 +4,7 @@ import { probeImageSets } from '../../engine/jepa/probes';
 import { GuideStrip } from '../GuideStrip';
 import { ModeSwitchProps, Navbar, NavTab } from '../Navbar';
 import { JepaInsideView } from './JepaInsideView';
+import { JepaNextView } from './JepaNextView';
 import { JepaSetupView } from './JepaSetupView';
 import { JepaStartView } from './JepaStartView';
 import { JepaTrainView } from './JepaTrainView';
@@ -14,6 +15,7 @@ const JEPA_TABS: readonly NavTab[] = [
   { id: 'setup', label: 'Set up', step: 1 },
   { id: 'training', label: 'Train', step: 2 },
   { id: 'pipeline', label: 'Look inside', step: 3 },
+  { id: 'next', label: "What's next", step: null },
 ];
 
 /** Labelled images for the probes and the nearest-neighbour gallery (fixed, so runs are comparable) */
@@ -130,7 +132,7 @@ export const JepaWorkbench: React.FC<JepaWorkbenchProps> = ({ active, modeSwitch
         {activeTab === 'pipeline' && (
           <>
             {!guidesHidden && (
-              <GuideStrip step={3} title="Look inside" onHide={() => setGuides(true)}>
+              <GuideStrip step={3} title="Look inside" next={{ label: "Next: What's next", onClick: () => setActiveTab('next') }} onHide={() => setGuides(true)}>
                 Follow one image through the three networks: what the context encoder sees, what the predictor guesses for the
                 hidden patches, and how close it gets. Then see which images the model thinks are alike.
               </GuideStrip>
@@ -138,6 +140,8 @@ export const JepaWorkbench: React.FC<JepaWorkbenchProps> = ({ active, modeSwitch
             <JepaInsideView model={model} untrained={untrained} settings={settings} gallery={probeSets.test} />
           </>
         )}
+
+        {activeTab === 'next' && <JepaNextView onNavigate={setActiveTab} />}
       </main>
     </>
   );

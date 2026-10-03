@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Eye, RefreshCw, Shuffle, Users } from 'lucide-react';
+import { Eye, RefreshCw, Shuffle, Users } from 'lucide-react';
 import { MicroJepa, sampleMask } from '../../engine/jepa/jepa';
 import { imageFeatures } from '../../engine/jepa/probes';
 import { ShapeImage, patchify, randomShapeImage } from '../../engine/jepa/shapes';
+import { JepaFlow } from './JepaFlow';
 import { ShapeCanvas } from './ShapeCanvas';
 import { GRID, IMAGE_SIZE, JepaSettings, PATCH_SIZE, describe, shapeSizes } from './jepaSettings';
 
@@ -122,75 +123,74 @@ export const JepaInsideView: React.FC<JepaInsideViewProps> = ({ model, untrained
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: 20 }}>
-        {/* The image */}
-        <div className="glass-panel" style={{ padding: '18px 22px' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 6 }}>The image, masked</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
-            {mask.context.length} visible patches go to the context encoder; the {mask.targets.length} outlined in amber are hidden.{' '}
-            <b style={{ color: 'var(--text-main)' }}>Click a patch</b> to see where the model looks from it.
-          </p>
-          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <ShapeCanvas
-              img={img}
-              scale={16}
-              patchSize={PATCH_SIZE}
-              mask={mask}
-              hidden={showHidden ? 'dim' : 'cover'}
-              heat={heat}
-              selectedPatch={selected}
-              onPatchClick={p => setSelected(s => (s === p ? null : p))}
-            />
-            <div style={{ flex: '1 1 160px', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
-              {selected === null ? (
-                <p>Nothing selected. Visible patches show the context encoder's attention; hidden ones show the predictor's.</p>
-              ) : (
-                <>
-                  <p style={{ marginBottom: 8 }}>
-                    {isHidden ? (
-                      <>Patch {selected} is <b style={{ color: 'var(--accent-amber)' }}>hidden</b>. Cyan shows where the predictor looked to guess its embedding (averaged over heads).</>
-                    ) : (
-                      <>Patch {selected} is <b style={{ color: 'var(--text-main)' }}>visible</b>. Cyan shows which visible patches the context encoder mixes into it (averaged over heads). It can't see the hidden ones.</>
-                    )}
-                  </p>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {layers.map((_, l) => (
-                      <button
-                        key={l}
-                        className={l === shownLayer ? 'btn-primary' : 'btn-secondary'}
-                        onClick={() => setLayer(l)}
-                        style={{ padding: '3px 9px', fontSize: '0.75rem' }}
-                      >
-                        {isHidden ? 'Predictor' : 'Encoder'} layer {l + 1}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* The flow */}
-        <div className="glass-panel" style={{ padding: '18px 22px' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>Through the three networks</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[
-              { title: 'Context encoder', color: 'var(--primary)', text: `Embeds the ${mask.context.length} visible patches (${settings.numLayers} layer${settings.numLayers > 1 ? 's' : ''}, ${settings.dModel} numbers each).` },
-              { title: 'Predictor', color: 'var(--accent-purple)', text: `Reads those embeddings plus a placeholder "mask token" at each of the ${mask.targets.length} hidden positions, and outputs a guess for each.` },
-              { title: 'Target encoder', color: 'var(--accent-amber)', text: `Embeds all ${GRID * GRID} patches with ${settings.recipe.ablation === 'none' ? `the slow EMA copy of the encoder (momentum ${model.momentum().toFixed(4)})` : 'the context encoder itself (the EMA copy is switched off)'}. Its embeddings of the hidden patches are the answers.` },
-              { title: 'Loss for this image', color: 'var(--accent-rose)', text: `${avgLoss.toFixed(4)}: the mean squared difference between guesses and answers.` },
-            ].map((b, i) => (
-              <React.Fragment key={b.title}>
-                {i > 0 && <ArrowRight size={14} color="var(--text-dim)" style={{ transform: 'rotate(90deg)', alignSelf: 'center' }} />}
-                <div style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--surface-inset)', borderLeft: `3px solid ${b.color}` }}>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{b.title}: </span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{b.text}</span>
+      {/* The image */}
+      <div className="glass-panel" style={{ padding: '18px 22px' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 6 }}>The image, masked</h3>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+          {mask.context.length} visible patches go to the context encoder; the {mask.targets.length} outlined in amber are hidden.{' '}
+          <b style={{ color: 'var(--text-main)' }}>Click a patch</b> to see where the model looks from it.
+        </p>
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <ShapeCanvas
+            img={img}
+            scale={16}
+            patchSize={PATCH_SIZE}
+            mask={mask}
+            hidden={showHidden ? 'dim' : 'cover'}
+            heat={heat}
+            selectedPatch={selected}
+            onPatchClick={p => setSelected(s => (s === p ? null : p))}
+          />
+          <div style={{ flex: '1 1 160px', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+            {selected === null ? (
+              <p>Nothing selected. Visible patches show the context encoder's attention; hidden ones show the predictor's.</p>
+            ) : (
+              <>
+                <p style={{ marginBottom: 8 }}>
+                  {isHidden ? (
+                    <>Patch {selected} is <b style={{ color: 'var(--accent-amber)' }}>hidden</b>. Cyan shows where the predictor looked to guess its embedding (averaged over heads).</>
+                  ) : (
+                    <>Patch {selected} is <b style={{ color: 'var(--text-main)' }}>visible</b>. Cyan shows which visible patches the context encoder mixes into it (averaged over heads). It can't see the hidden ones.</>
+                  )}
+                </p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {layers.map((_, l) => (
+                    <button
+                      key={l}
+                      className={l === shownLayer ? 'btn-primary' : 'btn-secondary'}
+                      onClick={() => setLayer(l)}
+                      style={{ padding: '3px 9px', fontSize: '0.75rem' }}
+                    >
+                      {isHidden ? 'Predictor' : 'Encoder'} layer {l + 1}
+                    </button>
+                  ))}
                 </div>
-              </React.Fragment>
-            ))}
+              </>
+            )}
           </div>
         </div>
+      </div>
+
+
+      {/* The flow, with this image's numbers */}
+      <div className="glass-panel" style={{ padding: '18px 22px' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>Through the three networks</h3>
+        <JepaFlow
+          text={{
+            visible: `The ${mask.context.length} visible patches`,
+            whole: `All ${GRID * GRID} patches`,
+            context: `Embeds each visible patch (${settings.numLayers} layer${settings.numLayers > 1 ? 's' : ''}, ${settings.dModel} numbers per patch).`,
+            predictor: `Reads those embeddings plus a placeholder "mask token" at each of the ${mask.targets.length} hidden positions, and outputs a guess for each.`,
+            target: `Embeds every patch of the full image. Its embeddings of the ${mask.targets.length} hidden patches are the answers.`,
+            loss: `${avgLoss.toFixed(4)} for this image: the mean squared difference between guesses and answers.`,
+            ema:
+              settings.recipe.ablation === 'none'
+                ? `weights copied slowly (EMA, momentum ${model.momentum().toFixed(4)}), never trained by the loss`
+                : settings.recipe.ablation === 'no-ema'
+                  ? 'same weights (EMA off); the loss still never trains this side'
+                  : 'same weights, and the loss trains this side too (stop-gradient off)',
+          }}
+        />
       </div>
 
       {/* Guesses vs answers */}
@@ -229,7 +229,8 @@ export const JepaInsideView: React.FC<JepaInsideViewProps> = ({ model, untrained
         </h3>
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
           The {NEIGHBOURS} images (out of {gallery.length}) whose embeddings point most nearly the same way as this one's. What they
-          have in common is what the embeddings encode: same colour? same shape? same place in the frame?
+          have in common is what the embeddings encode: same colour? same shape? same place in the frame? This uses only the
+          target encoder, the part you'd keep after training; the predictor plays no part.
         </p>
         {(['trained', 'untrained'] as const).map(which => {
           const list = neighbours[which];
