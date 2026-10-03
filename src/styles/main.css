@@ -219,6 +219,18 @@ input[type="text"]:focus, textarea:focus, select:focus {
   z-index: 10;
 }
 
+/* KeyPanel: term | meaning side by side; on narrow screens each term sits above its meaning,
+   so a long term doesn't squeeze the explanations into a sliver */
+.key-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(70px, max-content) 1fr;
+  gap: 5px 14px;
+}
+@media (max-width: 560px) {
+  .key-panel-grid { grid-template-columns: 1fr; gap: 0; }
+  .key-panel-grid > span { margin-bottom: 8px; }
+}
+
 /* The app eases in once (after the autosave has loaded) instead of popping onto the page */
 .app-shell {
   animation: appFadeIn 0.2s ease-out;

@@ -7,6 +7,7 @@ import { MergeHistory } from './MergeHistory';
 import { showTok, cosine, TokenChip } from './tokenUi';
 import { EmbeddingSpace } from './EmbeddingSpace';
 import { GoDeeper } from './GoDeeper';
+import { KeyPanel } from './KeyPanel';
 import { PromptInput, PromptHint, ShortcutKey } from './PromptInput';
 import { THEME, rgb } from '../styles/theme';
 import { MicroTransformer } from '../engine/transformer';
@@ -122,19 +123,7 @@ const Explain: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 /** Spells out a stage's formula one symbol at a time */
 const FormulaKey: React.FC<{ items: [symbol: string, meaning: React.ReactNode][] }> = ({ items }) => (
-  <div style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 8, background: 'var(--surface-inset)', border: '1px solid var(--border-color)' }}>
-    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-      Reading the formula
-    </div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(70px, max-content) 1fr', gap: '5px 14px', fontSize: '0.8rem', lineHeight: 1.5 }}>
-      {items.map(([symbol, meaning]) => (
-        <React.Fragment key={symbol}>
-          <code className="font-mono" style={{ color: 'var(--primary)', whiteSpace: 'nowrap' }}>{symbol}</code>
-          <span style={{ color: 'var(--text-muted)' }}>{meaning}</span>
-        </React.Fragment>
-      ))}
-    </div>
-  </div>
+  <KeyPanel title="Reading the formula" items={items} />
 );
 
 /** Tiny plot of GELU (solid) against the hard "negatives to 0" switch (dashed), for the MLP formula key */

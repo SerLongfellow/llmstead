@@ -1,6 +1,7 @@
 import React from 'react';
 import { Compass, Layers, MessageSquare, ThumbsUp, ClipboardCheck, Rocket, ArrowRight, BookOpen } from 'lucide-react';
 import { GoDeeper, ExternalLink } from './GoDeeper';
+import { KeyPanel } from './KeyPanel';
 
 interface WhatsNextViewProps {
   onNavigate: (tab: string) => void;
@@ -21,6 +22,8 @@ interface Stage {
   tagline: string;
   /** Plain-language explanation, one paragraph per entry */
   body: React.ReactNode[];
+  /** Jargon and acronyms used in this stage, explained for newcomers */
+  terms: [term: string, meaning: React.ReactNode][];
   here: string[];
   real: string[];
   example: { title: string; lines: ExampleLine[]; note?: string };
@@ -53,6 +56,14 @@ const STAGES: Stage[] = [
         position table, and use a gated MLP (SwiGLU). Near the end, many runs switch to a smaller set of high-quality data
         and stretch the context window to tens or hundreds of thousands of tokens.
       </>,
+    ],
+    terms: [
+      ['Parameters', 'The model\'s learned numbers (its weights). "405B" in a model name means 405 billion of them.'],
+      ['CPU / GPU', 'A CPU is your computer\'s general-purpose processor; LLMStead trains on it. A GPU (graphics processing unit) is a chip built to do thousands of multiplications at once, which is what training mostly is.'],
+      ['pre-LN', 'Normalizing the vector before each half of a transformer block instead of after it (LLMStead normalizes after, "post-LN"). Deep models train more stably this way.'],
+      ['RMSNorm', 'Root-mean-square normalization: a cheaper layer norm that only rescales the vector to a standard size, skipping the "subtract the average" step.'],
+      ['RoPE', 'Rotary position embedding: instead of adding a position vector (as LLMStead does), each query and key is rotated by an angle that depends on its position, so attention can tell how far apart two tokens are.'],
+      ['MLP / SwiGLU', 'The MLP is the per-token network in each block (see Look inside). SwiGLU is a "gated" version: two projections side by side, one of which decides how much of the other to let through, number by number.'],
     ],
     here: [
       'About 30,000 parameters',
@@ -108,6 +119,12 @@ const STAGES: Stage[] = [
         language.
       </>,
     ],
+    terms: [
+      ['SFT', 'Supervised fine-tuning. "Fine-tuning": continuing to train an already-trained model on a smaller, specialized dataset. "Supervised": every example comes with the exact answer to imitate.'],
+      ['Base model', 'The model straight out of pre-training: it continues text, but hasn\'t been taught to follow instructions or answer questions.'],
+      ['Special token', 'A token added to the vocabulary that never appears in ordinary text, like <|user|>, used to mark structure such as where a turn starts and ends.'],
+      ['Chat template', 'The fixed recipe that turns a conversation (who said what) into one flat sequence of tokens, special tokens included.'],
+    ],
     here: [
       'Q&A dataset uses plain "User:" and "Assistant:" text',
       'Trained from random weights on the conversations alone',
@@ -162,6 +179,15 @@ const STAGES: Stage[] = [
         LLMStead's math dataset is exactly this kind of data: every answer can be checked automatically.
       </>,
     ],
+    terms: [
+      ['RL', 'Reinforcement learning: learning from a score (a "reward") for what the model did, instead of from an example answer to copy.'],
+      ['RLHF', 'Reinforcement learning from human feedback: the reward comes from a reward model trained on people\'s choices between pairs of answers.'],
+      ['Reward model', 'A separate network that reads a prompt and an answer and outputs one number: how much people would likely prefer that answer.'],
+      ['DPO', 'Direct preference optimization: skips the reward model and adjusts the model straight from the pairs, raising the probability of the preferred answer relative to the rejected one.'],
+      ['RLAIF', 'Reinforcement learning from AI feedback: an AI model does the comparing, guided by a written list of principles. Constitutional AI is Anthropic\'s version.'],
+      ['Verifiable reward', 'A reward a program can check automatically: run the code\'s tests, or compare the final number with the right answer.'],
+      ['Reasoning model', 'A model trained (often with verifiable rewards) to write out intermediate steps before its final answer, sometimes called "thinking".'],
+    ],
     here: [
       'Only learns from the text it was shown',
       'No notion of a better or worse answer, only a likely next token',
@@ -209,6 +235,15 @@ const STAGES: Stage[] = [
         rely on human comparisons, such as arenas where people vote between two anonymous models, plus safety testing and
         red-teaming to find harmful behavior before release.
       </>,
+    ],
+    terms: [
+      ['Benchmark', 'A fixed set of questions with known answers, scored automatically, so different models can be compared on the same test.'],
+      ['MMLU', 'Massive Multitask Language Understanding: about 16,000 multiple-choice exam questions across 57 subjects, from law to physics.'],
+      ['GSM8K', 'Grade School Math 8K: about 8,500 grade-school math word problems. The answer is a number, so it\'s easy to check.'],
+      ['HumanEval', '164 small programming tasks; the model writes a function, and it passes only if the function passes hidden tests.'],
+      ['SWE-bench', 'Software engineering benchmark: real bug reports from open-source Python projects. The model\'s fix counts only if the project\'s own tests pass.'],
+      ['Contamination', 'When test questions (or their answers) leaked into the training data, so a high score may be memorization.'],
+      ['Red-teaming', 'Deliberately trying to make a model misbehave before release, borrowed from security, where the "red team" plays the attacker.'],
     ],
     here: [
       'A small prompt → expected-answer suite per dataset',
@@ -259,6 +294,15 @@ const STAGES: Stage[] = [
         Train tab. Low temperature picks the likeliest token almost every time; higher temperature adds variety. Deployed
         assistants also add system prompts, tool use and safety filters around the model itself.
       </>,
+    ],
+    terms: [
+      ['Bit', 'One binary digit. Fewer bits per weight means each number is stored more coarsely, but the whole model takes less memory.'],
+      ['Quantization', 'Rounding every weight to a coarser format after training (16 bits down to 8 or 4), trading a little accuracy for a much smaller, faster model.'],
+      ['KV cache', 'KV stands for keys and values, the attention vectors from Look inside. Saving them for earlier tokens means each new token only computes its own.'],
+      ['Batching', 'Running many requests through the model together, since a GPU is far faster doing many multiplications at once than one at a time.'],
+      ['Temperature', 'How much to flatten or sharpen the probabilities before picking the next token. Low: almost always the top choice. High: more variety.'],
+      ['System prompt', 'Instructions placed before the conversation that the user usually doesn\'t see, like "You are a helpful assistant".'],
+      ['Tool use', 'The model writes a structured request (search the web, run code); the app performs it and feeds the result back as more text.'],
     ],
     here: [
       'Weights are full 64-bit JavaScript numbers',
@@ -339,6 +383,7 @@ const StageCard: React.FC<{ stage: Stage; index: number; onNavigate: (tab: strin
     {stage.body.map((para, i) => (
       <p key={i} style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.65 }}>{para}</p>
     ))}
+    <KeyPanel title="Terms used here" items={stage.terms} />
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 12 }}>
       <BulletList heading="In LLMStead" items={stage.here} accent="var(--accent-amber)" />
