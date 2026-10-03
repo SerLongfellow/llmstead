@@ -6,6 +6,7 @@ import { AttentionGrid } from './AttentionGrid';
 import { MergeHistory } from './MergeHistory';
 import { showTok, cosine, TokenChip } from './tokenUi';
 import { EmbeddingSpace } from './EmbeddingSpace';
+import { GoDeeper } from './GoDeeper';
 import { THEME, rgb } from '../styles/theme';
 import { MicroTransformer } from '../engine/transformer';
 
@@ -159,18 +160,6 @@ const GeluCurve: React.FC = () => {
     </div>
   );
 };
-
-/** A short row of outside links for readers who want the full story */
-const GoDeeper: React.FC<{ links: { label: string; url: string }[] }> = ({ links }) => (
-  <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', margin: '0 0 12px', display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
-    <span>Go deeper:</span>
-    {links.map(l => (
-      <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>
-        {l.label}
-      </a>
-    ))}
-  </p>
-);
 
 const SubHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '28px 0 10px', paddingTop: 20, borderTop: '1px solid var(--border-color)' }}>

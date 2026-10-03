@@ -9,6 +9,7 @@ import { TrainingDashboard } from './components/TrainingDashboard';
 import { PipelineView } from './components/PipelineView';
 import { StartView } from './components/StartView';
 import { GuideStrip } from './components/GuideStrip';
+import { WhatsNextView } from './components/WhatsNextView';
 import { Github } from 'lucide-react';
 
 // Other places to learn how transformers work, linked from the footer
@@ -187,7 +188,7 @@ export default function App() {
         {activeTab === 'pipeline' && (
           <>
             {!guidesHidden && (
-              <GuideStrip step={3} title="Look inside" next={{ label: 'Back to Train', onClick: () => setActiveTab('training') }} onHide={() => setGuides(true)}>
+              <GuideStrip step={3} title="Look inside" next={{ label: "Next: What's next", onClick: () => setActiveTab('next') }} onHide={() => setGuides(true)}>
                 Type a prompt, click a stage to see what happens to it there, and click a token to follow it through the model.
                 Compare the same prompt before and after more training.
               </GuideStrip>
@@ -204,6 +205,8 @@ export default function App() {
             />
           </>
         )}
+
+        {activeTab === 'next' && <WhatsNextView onNavigate={setActiveTab} />}
       </main>
 
       <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>

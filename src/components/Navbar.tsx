@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home } from 'lucide-react';
+import { Home, Compass } from 'lucide-react';
 import { ChickenLogo } from './ChickenLogo';
 
 interface NavbarProps {
@@ -8,12 +8,13 @@ interface NavbarProps {
   isTraining: boolean;
 }
 
-/** The app's path, in order. Start is the intro; the rest are numbered steps. */
+/** The app's path, in order. Start is the intro, the middle three are numbered steps, and What's next is reading. */
 export const TABS = [
   { id: 'start', label: 'Start here', step: null },
   { id: 'setup', label: 'Set up', step: 1 },
   { id: 'training', label: 'Train', step: 2 },
   { id: 'pipeline', label: 'Look inside', step: 3 },
+  { id: 'next', label: "What's next", step: null },
 ] as const;
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -49,7 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <nav style={{ display: 'flex', gap: '6px', background: 'var(--surface-inset)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', background: 'var(--surface-inset)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -73,7 +74,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
               >
                 {tab.step === null ? (
-                  <Home size={15} />
+                  tab.id === 'start' ? <Home size={15} /> : <Compass size={15} />
                 ) : (
                   <span
                     className="font-mono"

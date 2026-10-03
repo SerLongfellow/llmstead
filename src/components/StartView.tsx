@@ -29,7 +29,7 @@ const STEPS = [
   },
 ];
 
-const NOT_THIS = [
+const NOT_THIS: { title: string; text: string; link?: { label: string; tab: string } }[] = [
   {
     title: 'Not a useful model.',
     text: "With about 30,000 parameters and a few pages of text, it learns patterns it has seen, like 3 + 4 = 7, and little else. It can't hold a conversation, answer real questions, or reliably do sums it hasn't seen.",
@@ -40,7 +40,8 @@ const NOT_THIS = [
   },
   {
     title: 'Not the whole recipe behind chat assistants.',
-    text: 'This covers pre-training: learning to predict the next token. Assistants like ChatGPT and Claude also go through fine-tuning and training on human feedback, which LLMStead doesn\'t do (yet).',
+    text: 'This covers pre-training: learning to predict the next token. Assistants like ChatGPT and Claude also go through fine-tuning and training on human feedback, which LLMStead doesn\'t do.',
+    link: { label: "See what comes next →", tab: 'next' },
   },
   {
     title: 'Not an exact copy of a modern LLM.',
@@ -119,6 +120,17 @@ export const StartView: React.FC<StartViewProps> = ({ onNavigate, guidesHidden, 
             <span style={{ color: 'var(--accent-rose)', fontWeight: 700, lineHeight: 1.5 }}>×</span>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
               <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{n.title}</span> {n.text}
+              {n.link && (
+                <>
+                  {' '}
+                  <button
+                    onClick={() => onNavigate(n.link!.tab)}
+                    style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 600, color: 'var(--primary)', cursor: 'pointer' }}
+                  >
+                    {n.link.label}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ))}
