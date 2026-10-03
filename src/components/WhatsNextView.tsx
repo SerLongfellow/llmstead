@@ -213,7 +213,7 @@ const STAGES: Stage[] = [
     here: [
       'A small prompt → expected-answer suite per dataset',
       'Each case labeled seen vs held-out by searching the training text',
-      'Greedy decoding; a case passes if the output starts with the expected answer',
+      'Greedy decoding; a case passes if the output starts with the expected answer as a whole word',
     ],
     real: [
       'Dozens of public benchmarks plus private internal ones',
@@ -224,8 +224,8 @@ const STAGES: Stage[] = [
     example: {
       title: 'Why the seen / held-out split matters',
       lines: [
-        { label: 'Seen', text: '3 + 4 = 7  ✓  (this exact line is in the training text)', tone: 'good' },
-        { label: 'Held-out', text: '4 + 3 = 7  ✗  (never in the training text)', tone: 'bad' },
+        { label: 'Seen', text: '1 + 2 = 3  ✓  (this exact line is in the training text, many times)', tone: 'good' },
+        { label: 'Held-out', text: '2 + 1 = 3  ✗  (never in the training text)', tone: 'bad' },
       ],
       note: 'A model that only passes the seen cases has memorized, not learned. Real benchmarks have the same problem at a much larger scale.',
     },

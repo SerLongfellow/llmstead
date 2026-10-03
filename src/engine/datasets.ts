@@ -20,6 +20,27 @@ function shuffle<T>(items: T[], rand: () => number): T[] {
 }
 
 /**
+ * How many extra copies of each "core" item (the benchmark's seen cases) a generated dataset
+ * scatters through its training text. A fact that appears once among thousands of lines is
+ * statistically invisible to a small model; it only gets learned if it recurs.
+ */
+const CORE_COPIES = 10;
+
+/**
+ * Core items first (so the originals stay put), then `rest` with CORE_COPIES extra copies of
+ * each core item inserted at random positions. Copies only go into the first 80% of `rest`,
+ * so they stay out of the held-out validation tail (the last ~15%, see splitDataset).
+ */
+function withRepeatedCore(core: string[], rest: string[], rand: () => number): string[] {
+  const out = rest.slice();
+  const limit = Math.floor(rest.length * 0.8);
+  for (let c = 0; c < CORE_COPIES; c++) {
+    for (const item of core) out.splice(Math.floor(rand() * limit), 0, item);
+  }
+  return [...core, ...out];
+}
+
+/**
  * Python dataset: the hand-written snippets, then templated variations (functions, loops,
  * conditionals) with a fixed shuffle. The templates never produce the benchmark's held-out
  * cases: no `subtract` function, no loop over `j`, and no conditionals on a variable `y`.
@@ -81,7 +102,9 @@ function buildCodeText(handwritten: string): string {
     snippets.push(`${list} = ${values}\nfor ${item} in ${list}:\n    print(${item})`);
   }
 
-  return handwritten + '\n\n' + shuffle(snippets, rand).join('\n\n');
+  // The first four hand-written snippets are the benchmark's seen cases: repeat them
+  const blocks = handwritten.split('\n\n');
+  return withRepeatedCore(blocks.slice(0, 4), [...blocks.slice(4), ...shuffle(snippets, rand)], rand).join('\n\n');
 }
 
 /**
@@ -140,7 +163,9 @@ function buildQaText(handwritten: string): string {
   const thanks = ['Thanks a lot!', 'Thank you so much!', 'That helps, thanks!', 'Great, thank you!'];
   thanks.forEach(t => turns.push(turn(t, "You're welcome!")));
 
-  return handwritten + '\n\n' + shuffle(turns, rand).join('\n\n');
+  // The first three hand-written turns are the benchmark's seen cases: repeat them
+  const blocks = handwritten.split('\n\n');
+  return withRepeatedCore(blocks.slice(0, 3), [...blocks.slice(3), ...shuffle(turns, rand)], rand).join('\n\n');
 }
 
 /**
@@ -237,7 +262,7 @@ function buildMathLogicText(): string {
     .filter(line => !HELD_OUT.some(h => line.includes(h)));
 
   const rand = seededRandom(42);
-  return [...intro, ...shuffle(generated, rand)].join('\n');
+  return withRepeatedCore(intro, shuffle(generated, rand), rand).join('\n');
 }
 
 export const SAMPLE_DATASETS: DatasetOption[] = [

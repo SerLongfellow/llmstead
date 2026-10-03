@@ -70,19 +70,18 @@ export const BENCHMARK_SUITES: Record<string, BenchmarkSuite> = {
     datasetId: 'shakespeare',
     datasetName: 'Tiny Shakespeare',
     cases: [
-      // Patterns that REPEAT in the training text. A small model learns frequent
-      // patterns long before it can memorize a line that appears only once.
-      { id: 's1', prompt: 'FIRST ', expectedOutput: 'CITIZEN' },
-      { id: 's2', prompt: 'SECOND ', expectedOutput: 'CITIZEN' },
-      { id: 's3', prompt: 'Caius ', expectedOutput: 'Marcius' },
-      { id: 's4', prompt: 'Noble ', expectedOutput: 'Marcius' },
-      { id: 's5', prompt: 'What\'s the ', expectedOutput: 'matter' },
-      { id: 's6', prompt: 'the Volsces are in ', expectedOutput: 'arms' },
+      // Patterns that REPEAT in the training text (counts are for the training split). A small
+      // model learns frequent patterns long before it can memorize a line that appears once,
+      // and a play can't be padded with repeats the way the generated datasets are.
+      { id: 's1', prompt: 'FIRST ', expectedOutput: 'CITIZEN' },     // 23×
+      { id: 's2', prompt: 'SECOND ', expectedOutput: 'CITIZEN' },    // 5×
+      { id: 's3', prompt: 'MENEN', expectedOutput: 'IUS' },          // 18×, a speaker name learned in pieces
+      { id: 's4', prompt: 'o\' ', expectedOutput: 'the' },           // 8×, as in "o' the city"
+      { id: 's5', prompt: 'Caius ', expectedOutput: 'Marcius' },     // 4×
       // Not in the corpus: the same patterns behind a new lead-in
-      { id: 's7', prompt: 'THIRD ', expectedOutput: 'CITIZEN' },
-      { id: 's8', prompt: 'I say, Caius ', expectedOutput: 'Marcius' },
-      { id: 's9', prompt: 'Tell me, what\'s the ', expectedOutput: 'matter' },
-      { id: 's10', prompt: 'Hark! the Volsces are in ', expectedOutput: 'arms' },
+      { id: 's6', prompt: 'THIRD ', expectedOutput: 'CITIZEN' },
+      { id: 's7', prompt: 'I say, Caius ', expectedOutput: 'Marcius' },
+      { id: 's8', prompt: 'Come out o\' ', expectedOutput: 'the' },
     ]
   },
   'code-python': {
@@ -125,8 +124,19 @@ function score(results: BenchmarkResult[]): SplitScore {
 }
 
 /**
+ * Does the output start with the expected answer as a whole word? Leading whitespace is
+ * ignored, and the answer must end there: "4\n2 + 2" matches "4", but "44" and "4x" don't.
+ */
+export function answerMatches(output: string, expected: string): boolean {
+  const text = output.trimStart();
+  if (!text.startsWith(expected)) return false;
+  const next = text.charAt(expected.length);
+  return next === '' || !/[A-Za-z0-9]/.test(next);
+}
+
+/**
  * Greedy-decode a short continuation for every case and check whether it starts
- * with the expected answer (leading whitespace ignored).
+ * with the expected answer as a whole word (see answerMatches).
  */
 export function runBenchmarkSuite(
   suite: BenchmarkSuite,
@@ -145,7 +155,7 @@ export function runBenchmarkSuite(
       testCase,
       split: classifyCase(testCase, trainText),
       actualOutput,
-      passed: actualOutput.trimStart().startsWith(testCase.expectedOutput),
+      passed: answerMatches(actualOutput, testCase.expectedOutput),
     };
   });
 

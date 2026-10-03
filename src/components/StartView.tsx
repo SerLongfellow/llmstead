@@ -52,7 +52,7 @@ const NOT_THIS: { title: string; text: string; link?: { label: string; tab: stri
 const EXPERIMENTS = [
   {
     title: 'What does it learn first?',
-    text: 'Train the math dataset (the default) for a couple of minutes, then run the benchmark. It gets sums it has seen, like 3 + 4 = 7, long before sums it has never seen, like 4 + 3. Memorizing comes before understanding.',
+    text: 'Train the math dataset (the default) for a couple of minutes, then run the benchmark. It gets sums it has seen many times, like 1 + 2 = 3, long before sums it has never seen, like 2 + 1. Memorizing comes before understanding.',
   },
   {
     title: 'Watch attention form',
