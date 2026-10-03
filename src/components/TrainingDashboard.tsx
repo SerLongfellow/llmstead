@@ -4,6 +4,8 @@ import { MicroTransformer } from '../engine/transformer';
 import { BPETokenizer } from '../engine/bpeTokenizer';
 import { splitDataset, samplePromptFor, VALIDATION_FRACTION } from '../engine/datasets';
 import { generateContinuation } from '../engine/generate';
+import { trainChunk, sampleWindow, validationLoss, isValidationDue } from '../engine/training';
+import type { ToWorker, FromWorker } from '../engine/trainWorker';
 import { Play, Pause, RotateCcw, FastForward, Activity, Sparkles, BookOpen, Turtle } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 import { BenchmarkPanel } from './BenchmarkPanel';
@@ -25,23 +27,25 @@ import { SaveStatus, TrainingHistory } from '../persistence';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-/**
- * Measure validation loss every N training steps. Each measurement is up to MAX_VAL_WINDOWS
- * forward passes, so measuring too often eats into training time (every 50 steps cost ~15%).
- */
-const VAL_EVERY = 200;
-const MAX_VAL_WINDOWS = 32;
-
 /** Slow motion: how long each stage (Sample, Forward, Compare, Backward, Update) stays on screen */
 const STAGE_MS = [1600, 1600, 2600, 1600, 3000];
 
 /**
- * While training runs, each tick does as many steps as fit in this many milliseconds, then
- * yields so the page can repaint. The chart and validation update once per tick, not once
- * per step, so almost all of the time goes to actual training.
+ * Continuous training normally runs in a Web Worker (engine/trainWorker.ts). If workers aren't
+ * available, it runs on the page instead: each tick does as many steps as fit in TICK_BUDGET_MS,
+ * then yields TICK_GAP_MS so the page can repaint. One tick = one chart point either way.
  */
 const TICK_BUDGET_MS = 100;
 const TICK_GAP_MS = 16;
+
+/** Start a training worker, or return null if this browser can't (then training runs on the page) */
+function createTrainWorker(): Worker | null {
+  try {
+    return new Worker(new URL('../engine/trainWorker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    return null;
+  }
+}
 
 interface TrainingDashboardProps {
   model: MicroTransformer;
@@ -75,10 +79,13 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   saveStatus,
 }) => {
   const [isTraining, setIsTraining] = useState<boolean>(false);
+  // True from Start until the training worker has handed back its final weights (a few ms after
+  // Pause). Until then the page's model is behind, so App waits to autosave and Step waits.
+  const [workerBusy, setWorkerBusy] = useState(false);
   useEffect(() => {
-    onTrainingChange?.(isTraining);
+    onTrainingChange?.(isTraining || workerBusy);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTraining]);
+  }, [isTraining, workerBusy]);
   const [stepCount, setStepCount] = useState<number>(() => initialHistory?.stepCount ?? 0);
   const [lossHistory, setLossHistory] = useState<number[]>(() => initialHistory?.lossHistory ?? []);
   const [valLossHistory, setValLossHistory] = useState<(number | null)[]>(() => initialHistory?.valLossHistory ?? []);
@@ -123,6 +130,9 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   useEffect(() => {
     if (model === lastModel.current) return;
     lastModel.current = model;
+    // Abandon any worker run: its late messages belong to the old model
+    runRef.current++;
+    setWorkerBusy(false);
     setIsTraining(false);
     resetHistory();
     setSlowStep(null);
@@ -130,72 +140,27 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   }, [model]);
 
   /**
-   * Average loss over windows of the held-out tail (forward pass only). Large splits are
-   * capped at MAX_VAL_WINDOWS evenly spaced windows — the same ones every time, so the
-   * curve stays smooth — to keep each measurement from freezing the page.
-   */
-  const computeValLoss = (): number | null => {
-    const { model, config, valTokens } = latest.current;
-    if (valTokens.length < 2) return null;
-    const W = config.contextWindow;
-    const numWindows = Math.ceil((valTokens.length - 1) / W);
-    const stride = W * Math.max(1, Math.ceil(numWindows / MAX_VAL_WINDOWS));
-    let total = 0;
-    let count = 0;
-    for (let start = 0; start < valTokens.length - 1; start += stride) {
-      const input = valTokens.slice(start, start + W);
-      const target = valTokens.slice(start + 1, start + W + 1);
-      const n = Math.min(input.length, target.length);
-      if (n === 0) continue;
-      total += model.evaluateLoss(input.slice(0, n), target.slice(0, n)).loss;
-      count++;
-    }
-    return count > 0 ? total / count : null;
-  };
-
-  /**
-   * Run training steps until `maxSteps` are done or `budgetMs` has elapsed, then record
-   * ONE chart point (the mean loss over those steps).
+   * Run training steps on the page until `maxSteps` are done or `budgetMs` has elapsed, then
+   * record ONE chart point (the mean loss over those steps). Used by the Step button, and for
+   * continuous training only when Web Workers aren't available.
    */
   const runTrainingSteps = (maxSteps: number, budgetMs: number) => {
-    const { model, config, trainTokens } = latest.current;
+    const { model, config, trainTokens, valTokens } = latest.current;
     if (trainTokens.length < 2) return;
-
     const startStep = stepRef.current;
-    const t0 = performance.now();
-    let lossSum = 0;
-    let steps = 0;
-    do {
-      const { inputSeq, targetSeq } = pickWindow();
-      lossSum += model.trainStep(inputSeq, targetSeq, config.learningRate).loss;
-      steps++;
-    } while (steps < maxSteps && performance.now() - t0 < budgetMs);
-
-    recordSteps(startStep, lossSum, steps);
+    const r = trainChunk(model, trainTokens, valTokens, {
+      contextWindow: config.contextWindow, learningRate: config.learningRate, startStep, budgetMs, maxSteps,
+    });
+    recordSteps(startStep, r.lossSum, r.steps, r.valLoss);
   };
 
-  /**
-   * Pick a random context-sized window from the TRAINING split only. Random sampling
-   * (rather than sliding one token per step) means every part of the text gets seen early.
-   */
-  const pickWindow = () => {
-    const { config, trainTokens } = latest.current;
-    const maxStart = Math.max(1, trainTokens.length - config.contextWindow - 1);
-    const startIdx = Math.floor(Math.random() * maxStart);
-    return {
-      startIdx,
-      inputSeq: trainTokens.slice(startIdx, startIdx + config.contextWindow),
-      targetSeq: trainTokens.slice(startIdx + 1, startIdx + config.contextWindow + 1),
-    };
-  };
+  /** A random training window (training split only) */
+  const pickWindow = () => sampleWindow(latest.current.trainTokens, latest.current.config.contextWindow);
 
   /** Advance the step counter and add ONE chart point (mean loss over `steps` steps) */
-  const recordSteps = (startStep: number, lossSum: number, steps: number) => {
-    stepRef.current += steps;
+  const recordSteps = (startStep: number, lossSum: number, steps: number, valLoss: number | null) => {
+    stepRef.current = startStep + steps;
     const nextStep = stepRef.current;
-    // Validate on the first step and whenever this batch crossed a multiple of VAL_EVERY
-    const crossedVal = Math.floor(nextStep / VAL_EVERY) > Math.floor(startStep / VAL_EVERY);
-    const valLoss = startStep === 0 || crossedVal ? computeValLoss() : null;
 
     setStepCount(nextStep);
     setStepLabels(l => [...l, `#${nextStep}`]);
@@ -241,7 +206,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     const probsAfter = after.probabilities.map((row, i) => row[targetSeq[i]] ?? 0);
     const lossAfter = probsAfter.reduce((s, p) => s - Math.log(Math.max(p, 1e-10)), 0) / n;
 
-    recordSteps(startStep, result.loss, 1);
+    const { model: m, config: c, valTokens } = latest.current;
+    recordSteps(startStep, result.loss, 1, isValidationDue(startStep, startStep + 1) ? validationLoss(m, valTokens, c.contextWindow) : null);
     return {
       stepNumber: stepRef.current,
       windowStart: startIdx,
@@ -275,14 +241,15 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
 
   // While playing, advance one stage at a time; after the last stage, run the next step
   useEffect(() => {
-    if (!slowMo || !isTraining) return;
+    // (waits for a worker run to hand its weights back if slow motion was switched on mid-run)
+    if (!slowMo || !isTraining || workerBusy) return;
     const timer = window.setTimeout(
       () => (!slowStep || stage >= STAGES.length ? startSlowStep() : setStage(st => st + 1)),
       slowStep ? STAGE_MS[stage - 1] ?? 0 : 0
     );
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slowMo, isTraining, stage, slowStep]);
+  }, [slowMo, isTraining, workerBusy, stage, slowStep]);
 
   // Paused: the panel's button steps through stages by hand
   const nextSlowStage = () => (!slowStep || stage >= STAGES.length ? startSlowStep() : setStage(st => st + 1));
@@ -290,17 +257,74 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   // "Step" button: exactly one training step (replayed stage by stage in slow motion)
   const performTrainStep = () => (slowMo ? startSlowStep() : runTrainingSteps(1, Infinity));
 
-  // Continuous loop: a time-boxed batch of steps per tick, with a short gap so React can repaint
+  // ── Continuous training ──────────────────────────────────────────────────
+  // Runs in a Web Worker: the worker gets a copy of the model, trains nonstop, and sends back one
+  // chart point per ~100 ms plus its weights about once a second (and once more when stopped),
+  // which are loaded into the page's model so Look inside, generation and benchmarks see them.
+  const workerRef = useRef<Worker | null | undefined>(undefined); // undefined = not created yet
+  const runRef = useRef(0); // id of the current run; messages from older runs are ignored
+  const runModel = useRef<MicroTransformer | null>(null); // the page model the run started from
+  const acceptProgress = useRef(true); // false after Reset, so in-flight points don't reappear
+
+  const onWorkerMessage = useRef<(msg: FromWorker) => void>(() => {});
+  onWorkerMessage.current = msg => {
+    if (msg.run !== runRef.current) return;
+    if (msg.type === 'progress') {
+      if (acceptProgress.current) recordSteps(msg.startStep, msg.lossSum, msg.steps, msg.valLoss);
+    } else {
+      runModel.current?.importState(msg.state);
+      if (msg.final) setWorkerBusy(false);
+    }
+  };
+  const getWorker = (): Worker | null => {
+    if (workerRef.current === undefined) {
+      const worker = createTrainWorker();
+      if (worker) worker.onmessage = (e: MessageEvent<FromWorker>) => onWorkerMessage.current(e.data);
+      workerRef.current = worker;
+    }
+    return workerRef.current;
+  };
+  const post = (msg: ToWorker, transfer: Transferable[] = []) => workerRef.current?.postMessage(msg, transfer);
+  useEffect(() => () => workerRef.current?.terminate(), []);
+
   useEffect(() => {
     if (!isTraining || slowMo) return;
-    let timer: number;
-    const tick = () => {
-      runTrainingSteps(Infinity, TICK_BUDGET_MS);
-      timer = window.setTimeout(tick, TICK_GAP_MS);
-    };
-    timer = window.setTimeout(tick, 0);
-    return () => clearTimeout(timer);
+    const worker = getWorker();
+
+    if (!worker) {
+      // No workers in this browser: train on the page, a time-boxed batch of steps per tick,
+      // with a short gap so React can repaint
+      let timer: number;
+      const tick = () => {
+        runTrainingSteps(Infinity, TICK_BUDGET_MS);
+        timer = window.setTimeout(tick, TICK_GAP_MS);
+      };
+      timer = window.setTimeout(tick, 0);
+      return () => clearTimeout(timer);
+    }
+
+    const { model, config, trainTokens, valTokens } = latest.current;
+    const run = ++runRef.current;
+    runModel.current = model;
+    acceptProgress.current = true;
+    setWorkerBusy(true);
+    const state = model.exportState(); // fresh arrays, so their buffers can be moved to the worker
+    const buffers = [...Object.values(state.weights), ...Object.values(state.optimizer.m), ...Object.values(state.optimizer.v)].map(a => a.buffer);
+    post({ type: 'start', run, config, state, trainTokens, valTokens, step: stepRef.current }, buffers);
+    // Pausing asks for the final weights; their arrival (onWorkerMessage) ends the run
+    return () => post({ type: 'stop' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTraining, slowMo]);
+
+  // Learning rate and optimizer can change mid-run
+  useEffect(() => {
+    if (workerBusy) post({ type: 'set', learningRate: config.learningRate });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.learningRate]);
+  useEffect(() => {
+    if (workerBusy) post({ type: 'set', optimizer: config.optimizer });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.optimizer]);
 
   // Handle Text Generation Sampling
   const handleGenerate = () => {
@@ -410,18 +434,21 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
             <button
               className={isTraining ? 'btn-secondary' : 'btn-primary'}
               onClick={() => setIsTraining(!isTraining)}
+              disabled={!isTraining && workerBusy}
             >
               {isTraining ? <Pause size={16} /> : <Play size={16} />}
-              {isTraining ? 'Pause Training' : slowMo ? 'Play Slow Motion' : 'Start Continuous Train'}
+              {isTraining ? 'Pause Training' : workerBusy ? 'Pausing…' : slowMo ? 'Play Slow Motion' : 'Start Continuous Train'}
             </button>
 
-            <button className="btn-secondary" onClick={performTrainStep}>
+            {/* While the worker trains, the page's model is only a copy, so single steps wait */}
+            <button className="btn-secondary" onClick={performTrainStep} disabled={workerBusy}>
               <FastForward size={16} /> Step
             </button>
 
             <button
               className="btn-secondary"
               onClick={() => {
+                acceptProgress.current = false;
                 setIsTraining(false);
                 resetHistory();
               }}
