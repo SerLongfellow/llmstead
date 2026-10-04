@@ -110,7 +110,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         <button className="btn-secondary" onClick={onExport} title="Download your model to run in Ollama or llama.cpp">
-          <Download size={15} /> Export
+          <Download size={15} /> Export Model
         </button>
       </div>
     </header>
