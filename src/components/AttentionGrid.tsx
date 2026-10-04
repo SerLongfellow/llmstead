@@ -12,10 +12,12 @@ interface AttentionGridProps {
   tokenStrings: string[];
   highlightRow?: number;    // query row to outline (e.g. the token being followed)
   onSelectRow?: (row: number) => void;
+  /** false for an encoder whose positions all see each other (no masked cells); default true */
+  causal?: boolean;
 }
 
 /** One head's attention matrix plus a hover inspector. Shown in the Pipeline's block stages. */
-export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, tokenStrings, highlightRow, onSelectRow }) => {
+export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, tokenStrings, highlightRow, onSelectRow, causal = true }) => {
   const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number; val: number } | null>(null);
 
   return (
@@ -59,7 +61,7 @@ export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, toke
 
                   {/* Columns (Key tokens) */}
                   {tokenStrings.map((_, colIdx) => {
-                    const isMasked = colIdx > rowIdx; // Causal Masking (cannot look ahead)
+                    const isMasked = causal && colIdx > rowIdx; // Causal Masking (cannot look ahead)
                     const val = attentionMap[rowIdx]?.[colIdx] ?? 0;
 
                     return (
@@ -132,7 +134,7 @@ export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, toke
                   {(hoveredCell.val * 100).toFixed(1)}%
                 </p>
                 <p style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>
-                  {hoveredCell.col > hoveredCell.row ? '🔒 Masked (Future token)' : 'Allowed Causal Attention'}
+                  {!causal ? 'Every position may attend to every other' : hoveredCell.col > hoveredCell.row ? '🔒 Masked (Future token)' : 'Allowed Causal Attention'}
                 </p>
               </div>
             </div>
@@ -144,7 +146,11 @@ export const AttentionGrid: React.FC<AttentionGridProps> = ({ attentionMap, toke
         </div>
 
         <div style={{ padding: '12px', background: 'var(--primary-soft)', border: '1px solid var(--primary-soft)', borderRadius: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          <p>💡 <strong>Causal Masking</strong> ensures position i can only attend to previous positions j ≤ i. This enforces autoregressive left-to-right text generation!</p>
+          {causal ? (
+            <p>💡 <strong>Causal Masking</strong> ensures position i can only attend to previous positions j ≤ i. This enforces autoregressive left-to-right text generation!</p>
+          ) : (
+            <p>💡 <strong>No mask:</strong> this tower only summarizes the whole caption into one vector and never predicts the next word, so every word may look at every other, later ones included.</p>
+          )}
         </div>
       </div>
     </div>
