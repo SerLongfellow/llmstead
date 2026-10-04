@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BPETokenizer } from '../engine/bpeTokenizer';
 import { showTok, TokenChip } from './tokenUi';
 import { THEME } from '../styles/theme';
+import { pca2 } from '../engine/pca';
 
 interface EmbeddingSpaceProps {
   embeddings: number[][];       // snapshot of the token embedding table [vocab × dModel]
@@ -31,35 +32,6 @@ const category = (t: string) => {
 const LEGEND = ([['digit', '1'], ['uppercase letter', 'A'], ['lowercase letter', 'a'], ['space / punctuation', ','], ['merged token', 'ab']] as const).map(
   ([label, sample]) => ({ label, color: category(sample).color })
 );
-
-/**
- * Top-2 principal components of the (centered) embeddings via power iteration on the
- * d × d covariance matrix. Returns the mean, the two directions and the share of total
- * variance each one explains.
- */
-function pca2(rows: Vec[]) {
-  const d = rows[0].length;
-  const mean = new Array(d).fill(0);
-  for (const r of rows) for (let j = 0; j < d; j++) mean[j] += r[j] / rows.length;
-  const X = rows.map(r => r.map((v, j) => v - mean[j]));
-  const C: number[][] = Array.from({ length: d }, () => new Array(d).fill(0));
-  for (const x of X) for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) C[i][j] += x[i] * x[j];
-  const trace = C.reduce((s, row, i) => s + row[i], 0) || 1;
-
-  const components: { dir: Vec; share: number }[] = [];
-  for (let k = 0; k < 2; k++) {
-    let v: Vec = Array.from({ length: d }, (_, i) => Math.sin(i + 1 + k)); // deterministic start
-    for (let it = 0; it < 200; it++) {
-      let w = C.map(row => dot(row, v));
-      for (const { dir } of components) w = add(w, dir, -dot(w, dir)); // stay orthogonal to earlier PCs
-      const n = norm(w) || 1;
-      v = w.map(x => x / n);
-    }
-    const lambda = dot(v, C.map(row => dot(row, v)));
-    components.push({ dir: v, share: lambda / trace });
-  }
-  return { mean, components };
-}
 
 export const EmbeddingSpace: React.FC<EmbeddingSpaceProps> = ({ embeddings, idToToken, tokenizer, focusTokenId }) => {
   const [expr, setExpr] = useState<string>(EXAMPLES[0]);

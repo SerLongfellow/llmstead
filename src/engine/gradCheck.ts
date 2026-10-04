@@ -1,3 +1,4 @@
+import { Matrix } from './tensor';
 import { MicroTransformer } from './transformer';
 
 export interface GradCheckResult {
@@ -22,13 +23,24 @@ export function checkGradients(
   targetTokens: number[],
   opts: { samplesPerMatrix?: number; h?: number } = {}
 ): GradCheckResult[] {
+  return checkGradientsOf({
+    params: model.getParameters(),
+    grads: model.computeGradients(inputTokens, targetTokens).grads,
+    lossAt: () => model.evaluateLoss(inputTokens, targetTokens).loss,
+  }, opts);
+}
+
+/** The same check for any model: its live parameters, its analytic gradients, and a loss function */
+export function checkGradientsOf(
+  model: { params: Record<string, Matrix>; grads: Record<string, Matrix>; lossAt: () => number },
+  opts: { samplesPerMatrix?: number; h?: number } = {}
+): GradCheckResult[] {
   const samples = opts.samplesPerMatrix ?? 25;
   const h = opts.h ?? 1e-5;
-  const { grads } = model.computeGradients(inputTokens, targetTokens);
-  const lossAt = () => model.evaluateLoss(inputTokens, targetTokens).loss;
+  const { params, grads, lossAt } = model;
 
   const results: GradCheckResult[] = [];
-  for (const [name, param] of Object.entries(model.getParameters())) {
+  for (const [name, param] of Object.entries(params)) {
     const rows = param.length;
     const cols = param[0].length;
     let maxRel = 0;
