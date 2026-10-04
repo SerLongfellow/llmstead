@@ -279,7 +279,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
       title: `Block ${l + 1}`,
       shape: `[${seqLen} × ${config.dModel}]`,
       caption: 'Attention → MLP',
-      visual: <MatrixHeatmap matrix={layer.norm2Output} highlightRow={f} />,
+      visual: <MatrixHeatmap matrix={layer.blockOutput} highlightRow={f} />,
     })),
     {
       id: 'probs',
@@ -434,16 +434,16 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
     if (stage.startsWith('block-')) {
       const l = Number(stage.slice(6));
       const layer = data.layerInspections[l];
-      const blockInput = l === 0 ? data.combinedEmbeddings[f] : data.layerInspections[l - 1].norm2Output[f];
-      const similarity = cosine(blockInput, layer.norm2Output[f]);
+      const blockInput = l === 0 ? data.combinedEmbeddings[f] : data.layerInspections[l - 1].blockOutput[f];
+      const similarity = cosine(blockInput, layer.blockOutput[f]);
       return (
         <>
           <SectionTitle step={`Stage ${4 + l}`} title={`Transformer block ${l + 1}`} />
           <Explain>
             A block has two halves. <b>Attention</b> is the only place tokens exchange information: each token pulls in
-            information from earlier tokens. The <b>MLP</b> then processes each token on its own. After each half, the result
-            is added back onto the token's vector and normalized. Stacking blocks lets later ones build on what earlier ones
-            worked out. Following <TokenChip text={focusTok} active /> through this block:
+            information from earlier tokens. The <b>MLP</b> then processes each token on its own. Each half reads a normalized
+            copy of the token's vector, and its result is added back onto the vector. Stacking blocks lets later ones build on
+            what earlier ones worked out. Following <TokenChip text={focusTok} active /> through this block:
           </Explain>
           <GoDeeper
             links={[
@@ -458,7 +458,8 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
               <FormulaKey
                 items={[
                   ['·', 'matrix multiplication: each output number is a dot product (multiply two lists number by number, then sum)'],
-                  ['Q, K, V', `queries, keys and values: the token vectors multiplied by three learned matrices (Q = x·W_Q, and so on). One row per token, ${config.dModel / config.numHeads} numbers each, separately for every head`],
+                  ['LN(x)', "the token vectors entering the block, after layer normalization: subtract each vector's average from every number, then divide by their standard deviation, so every vector has mean 0 and spread 1. (This model has no learned scale or shift after that.)"],
+                  ['Q, K, V', `queries, keys and values: the normalized vectors multiplied by three learned matrices (Q = LN(x)·W_Q, and so on). One row per token, ${config.dModel / config.numHeads} numbers each, separately for every head`],
                   ['Q·Kᵀ', 'every query dotted with every key: a table of raw scores, one per (token, earlier token) pair. ᵀ (transpose) flips K so the shapes line up'],
                   ['/ √d_head', `divide by √${config.dModel / config.numHeads}. Dot products of longer vectors come out bigger; without this, softmax would lock onto one token and stop learning`],
                   ['softmax', 'turns each row of scores into weights that are positive and add up to 100%: eˢ / Σeˢ. Future tokens are masked out first'],
@@ -553,23 +554,24 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <SectionTitle step="b" title="Add & normalize" formula="LN(x + attention)" />
+              <SectionTitle step="b" title="Add back (the residual connection)" formula="x + attention(LN(x))" />
               <FormulaKey
                 items={[
-                  ['x', 'the vector that entered this block'],
-                  ['+ attention', "add attention's output number by number (the residual connection)"],
-                  ['LN', "layer normalization: subtract the vector's average from every number, then divide by their standard deviation. This model has no learned scale or shift after that"],
+                  ['x', 'the vector that entered this block, not normalized'],
+                  ['+ attention', "add attention's output number by number"],
                 ]}
               />
               <Explain>
                 Attention's output doesn't replace the token's vector; it's <b>added</b> to it. This is a <b>residual
                 connection</b>: each half of the block only has to learn an adjustment, and the original information passes
                 through untouched unless something changes it. That also gives gradients a direct path back to early layers,
-                which is what makes deep stacks trainable. <b>Layer normalization</b> then rescales the vector to mean 0 and
-                spread 1, so values don't grow or shrink out of control from block to block. (This model normalizes after
-                adding, like the original Transformer; GPT-2 and most newer models normalize before each half instead.)
+                which is what makes deep stacks trainable. The running vector that every block adds onto is called the{' '}
+                <b>residual stream</b>. <b>Layer normalization</b> happens only on the copies each half reads, so whatever is
+                large in the stream doesn't swamp the attention or MLP math. This "normalize before each half" layout
+                (pre-LN) is GPT-2's; the original Transformer normalized the stream itself after each add (post-LN), which
+                trains less stably in deep stacks.
               </Explain>
-              <VectorStrip label="After attention" note="added to the input, then normalized" vector={layer.norm1Output[f]} />
+              <VectorStrip label="After attention" note="the input plus attention's output" vector={layer.afterAttention[f]} />
               <GoDeeper
                 links={[
                   { label: 'The residual stream (Anthropic, Transformer Circuits)', url: 'https://transformer-circuits.pub/2021/framework/index.html' },
@@ -580,11 +582,11 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <SectionTitle step="c" title="MLP" formula="GELU(x · W₁) · W₂" />
+              <SectionTitle step="c" title="MLP" formula="GELU(LN(x) · W₁) · W₂" />
               <FormulaKey
                 items={[
-                  ['x', 'the vector after step b'],
-                  ['W₁', `a ${config.dModel} × ${config.dModel * config.mlpRatio} matrix. Each column is one neuron's pattern, so x · W₁ gives every neuron's match score`],
+                  ['LN(x)', 'the vector after step b, normalized again (a fresh copy; the vector itself stays as it is)'],
+                  ['W₁', `a ${config.dModel} × ${config.dModel * config.mlpRatio} matrix. Each column is one neuron's pattern, so LN(x) · W₁ gives every neuron's match score`],
                   [
                     'GELU',
                     <>
@@ -635,12 +637,12 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <SectionTitle step="d" title="Add & normalize → block output" formula="LN(x + MLP)" />
+              <SectionTitle step="d" title="Add back → block output" formula="x + MLP(LN(x))" />
               <Explain>
-                The same residual add and normalization as in step b, this time around the MLP: x is the vector after step b,
-                and MLP is the MLP's output.
+                The same residual add as in step b, this time around the MLP: x is the vector after step b, and the MLP's
+                output is added onto it. The sum is passed on as it is, without normalizing.
               </Explain>
-              <VectorStrip label="Block output" note={l + 1 < config.numLayers ? `enters Block ${l + 2}` : 'goes to the output head'} vector={layer.norm2Output[f]} />
+              <VectorStrip label="Block output" note={l + 1 < config.numLayers ? `enters Block ${l + 2}` : 'goes to the output head'} vector={layer.blockOutput[f]} />
               <Explain>
                 Similarity between this token's vector going in and coming out: <b className="font-mono">{similarity.toFixed(2)}</b>{' '}
                 (1.00 = unchanged direction). A low number means this block rewrote a lot about the token.
@@ -662,7 +664,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
           <FormulaKey
             items={[
               ['x', `the last block's output for this token (${config.dModel} numbers)`],
-              ['LN', "one final layer norm. Here it barely changes anything, since each block already ends with one; in GPT-style models that normalize before each half, it's essential"],
+              ['LN', "one final layer norm. The blocks only normalize the copies they read, so the residual stream itself arrives here at whatever scale the blocks added up to; this brings it back to mean 0 and spread 1 before scoring"],
               ['W_head', `a ${config.dModel} × ${config.vocabSize} matrix with one column per vocabulary token. x · W_head gives each token a raw score, called a logit`],
               ['softmax', 'turns the logits into probabilities that add up to 100%: eˢ / Σeˢ. Higher score, higher probability'],
             ]}

@@ -1,11 +1,13 @@
 import React from 'react';
-import { Home, Compass } from 'lucide-react';
+import { Home, Compass, Download } from 'lucide-react';
 import { ChickenLogo } from './ChickenLogo';
 
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   isTraining: boolean;
+  /** Opens the export dialog (download the model as a GGUF file for Ollama) */
+  onExport: () => void;
 }
 
 /** The app's path, in order. Start is the intro, the middle three are numbered steps, and What's next is reading. */
@@ -21,6 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   isTraining,
+  onExport,
 }) => {
   const tabs = TABS;
 
@@ -105,6 +108,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             );
           })}
         </nav>
+
+        <button className="btn-secondary" onClick={onExport} title="Download your model to run in Ollama or llama.cpp">
+          <Download size={15} /> Export
+        </button>
       </div>
     </header>
   );

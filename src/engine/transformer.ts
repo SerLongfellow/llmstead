@@ -15,24 +15,25 @@ export type ArchitectureConfig = Pick<
 >;
 
 /**
- * Architecture: POST-LayerNorm (original "Attention Is All You Need" layout).
+ * Architecture: PRE-LayerNorm, the GPT-2 layout. Each half of a block reads a normalized copy
+ * of its input, and its output is added back onto the residual stream, which is never
+ * normalized itself until the final LayerNorm before the output head:
  *
- *   x ─► Attention ─► (+x) ─► LayerNorm ─► MLP ─► (+) ─► LayerNorm ─► next block
+ *   x ─┬─► LayerNorm ─► Attention ─► (+) ─┬─► LayerNorm ─► MLP ─► (+) ─► next block
+ *      └──────────────────────────────┘   └────────────────────────┘
  *
- * GPT-2 and most modern LLMs use PRE-LayerNorm instead, where each sub-layer
- * normalizes its *input* and the residual stream itself is never normalized:
- *
- *   x ─► LayerNorm ─► Attention ─► (+x) ─► LayerNorm ─► MLP ─► (+) ─► next block
- *
- * Pre-LN trains more stably in deep stacks; post-LN is simpler to read.
+ * The original Transformer was POST-LayerNorm (residual add, then normalize the sum), but
+ * pre-LN trains more stably in deep stacks and is what GPT-2 and nearly every later LLM use.
+ * Matching GPT-2 exactly is also what lets the GGUF export (gguf.ts) hand the weights to
+ * llama.cpp and Ollama, which run GPT-2 with their own code. GPT-2 also has biases and a
+ * learned LayerNorm scale and shift; this model leaves them out, and the export writes them
+ * as zeros and ones, which changes nothing.
  */
 
 /** Values from the forward pass that the visualizers don't need but backprop does */
 interface LayerCache {
-  input: Matrix;        // block input x
-  res1: Matrix;         // x + attention output (input to LayerNorm 1)
+  input: Matrix;        // block input x (input to LayerNorm 1)
   mlpHiddenRaw: Matrix; // MLP pre-activation (input to GELU)
-  res2: Matrix;         // norm1 + MLP output (input to LayerNorm 2)
 }
 
 export class MicroTransformer {
@@ -155,10 +156,13 @@ export class MicroTransformer {
 
     // 2. Transformer Block Execution
     for (let l = 0; l < this.config.numLayers; l++) {
+      // Pre-LN: attention reads a normalized copy of the stream
+      const norm1Output = MatrixMath.layerNorm(x);
+
       // Q, K, V projections: [seqLen x dModel] * [dModel x dModel] -> [seqLen x dModel]
-      const fullQ = MatrixMath.matmul(x, this.wQ[l]);
-      const fullK = MatrixMath.matmul(x, this.wK[l]);
-      const fullV = MatrixMath.matmul(x, this.wV[l]);
+      const fullQ = MatrixMath.matmul(norm1Output, this.wQ[l]);
+      const fullK = MatrixMath.matmul(norm1Output, this.wK[l]);
+      const fullV = MatrixMath.matmul(norm1Output, this.wV[l]);
 
       // Split into heads: [numHeads][seqLen][headDim]
       const queries: number[][][] = MatrixMath.zeros3D(numHeads, seqLen, headDim);
@@ -208,18 +212,17 @@ export class MicroTransformer {
       // Project concatenated multi-head output back: [seqLen x dModel]
       const attnProjected = MatrixMath.matmul(concatOutput, this.wO[l]);
 
-      // Post-LN: residual add FIRST, then normalize the sum
-      const res1 = MatrixMath.add(x, attnProjected);
-      const norm1Output = MatrixMath.layerNorm(res1);
+      // Residual add: attention's output is added onto the stream
+      const afterAttention = MatrixMath.add(x, attnProjected);
 
-      // MLP / Feed-Forward Network on the normalized stream: MLP1 -> GELU -> MLP2
-      const mlpHiddenRaw = MatrixMath.matmul(norm1Output, this.wMlp1[l]);
+      // MLP / Feed-Forward Network on a normalized copy: LN -> MLP1 -> GELU -> MLP2
+      const norm2Output = MatrixMath.layerNorm(afterAttention);
+      const mlpHiddenRaw = MatrixMath.matmul(norm2Output, this.wMlp1[l]);
       const mlpHidden = MatrixMath.gelu(mlpHiddenRaw);
       const mlpOutput = MatrixMath.matmul(mlpHidden, this.wMlp2[l]);
 
-      // Post-LN: residual add (around the MLP), then normalize again
-      const res2 = MatrixMath.add(norm1Output, mlpOutput);
-      const norm2Output = MatrixMath.layerNorm(res2);
+      // Residual add around the MLP gives the block output (not normalized)
+      const blockOutput = MatrixMath.add(afterAttention, mlpOutput);
 
       layerInspections.push({
         layerIndex: l,
@@ -231,19 +234,21 @@ export class MicroTransformer {
         headOutputs,
         concatOutput,
         norm1Output,
+        afterAttention,
+        norm2Output,
         mlpHidden,
         mlpOutput,
-        norm2Output
+        blockOutput
       });
 
       // Pass output to next block
-      caches.push({ input: x, res1, mlpHiddenRaw, res2 });
+      caches.push({ input: x, mlpHiddenRaw });
 
-      x = norm2Output;
+      x = blockOutput;
     }
 
-    // Final LayerNorm before the unembedding head. In this post-LN layout x is already
-    // normalized by the last block, so this is ~identity; it becomes essential under pre-LN.
+    // Final LayerNorm before the unembedding head: under pre-LN the stream is never normalized
+    // inside the blocks, so this is where it's brought back to a standard scale.
     const finalNorm = MatrixMath.layerNorm(x);
 
     // 3. Final Logits & Softmax Probabilities: [seqLen x dModel] * [dModel x vocabSize] -> [seqLen x vocabSize]
@@ -388,7 +393,7 @@ export class MicroTransformer {
     const dFinalNorm = mm(dLogits, T(this.wHead));
 
     // ── Final LayerNorm. Its input is the last block's output (or the embeddings if 0 layers).
-    const lastOut = numLayers > 0 ? fwd.layerInspections[numLayers - 1].norm2Output : fwd.combinedEmbeddings;
+    const lastOut = numLayers > 0 ? fwd.layerInspections[numLayers - 1].blockOutput : fwd.combinedEmbeddings;
     let dX = MatrixMath.layerNormBackward(lastOut, dFinalNorm);
 
     // ── Transformer blocks, last to first. dX enters as ∂L/∂(block output).
@@ -396,12 +401,9 @@ export class MicroTransformer {
       const ins = fwd.layerInspections[l];
       const cache = caches[l];
 
-      // norm2 = LN(res2)
-      const dRes2 = MatrixMath.layerNormBackward(cache.res2, dX);
-
-      // res2 = norm1 + mlpOut  → gradient flows to both the skip path and the MLP
-      const dNorm1 = dRes2.map(row => row.slice());
-      const dMlpOut = dRes2;
+      // blockOutput = afterAttention + mlpOut  → gradient flows to both the skip path and the MLP
+      const dAfterAttn = dX.map(row => row.slice());
+      const dMlpOut = dX;
 
       // mlpOut = gelu(mlpHiddenRaw) · W2
       grads[`wMlp2.${l}`] = mm(T(ins.mlpHidden), dMlpOut);
@@ -410,16 +412,16 @@ export class MicroTransformer {
       // mlpHidden = gelu(mlpHiddenRaw)
       const dMlpRaw = MatrixMath.geluBackward(cache.mlpHiddenRaw, dMlpHidden);
 
-      // mlpHiddenRaw = norm1 · W1
-      grads[`wMlp1.${l}`] = mm(T(ins.norm1Output), dMlpRaw);
-      MatrixMath.addInPlace(dNorm1, mm(dMlpRaw, T(this.wMlp1[l])));
+      // mlpHiddenRaw = norm2 · W1
+      grads[`wMlp1.${l}`] = mm(T(ins.norm2Output), dMlpRaw);
+      const dNorm2 = mm(dMlpRaw, T(this.wMlp1[l]));
 
-      // norm1 = LN(res1)
-      const dRes1 = MatrixMath.layerNormBackward(cache.res1, dNorm1);
+      // norm2 = LN(afterAttention): the MLP branch's gradient joins the skip path's
+      MatrixMath.addInPlace(dAfterAttn, MatrixMath.layerNormBackward(ins.afterAttention, dNorm2));
 
-      // res1 = x + attnProjected  → skip path and attention branch both get dRes1
-      const dInput = dRes1.map(row => row.slice());
-      const dAttnProjected = dRes1;
+      // afterAttention = x + attnProjected  → skip path and attention branch both get it
+      const dInput = dAfterAttn.map(row => row.slice());
+      const dAttnProjected = dAfterAttn;
 
       // attnProjected = concat · W_O
       grads[`wO.${l}`] = mm(T(ins.concatOutput), dAttnProjected);
@@ -449,14 +451,17 @@ export class MicroTransformer {
         }
       }
 
-      // Q = x·W_Q, K = x·W_K, V = x·W_V  → x gets gradient from all three projections
-      const xT = T(cache.input);
-      grads[`wQ.${l}`] = mm(xT, dQ);
-      grads[`wK.${l}`] = mm(xT, dK);
-      grads[`wV.${l}`] = mm(xT, dV);
-      MatrixMath.addInPlace(dInput, mm(dQ, T(this.wQ[l])));
-      MatrixMath.addInPlace(dInput, mm(dK, T(this.wK[l])));
-      MatrixMath.addInPlace(dInput, mm(dV, T(this.wV[l])));
+      // Q = norm1·W_Q, K = norm1·W_K, V = norm1·W_V  → norm1 gets gradient from all three
+      const n1T = T(ins.norm1Output);
+      grads[`wQ.${l}`] = mm(n1T, dQ);
+      grads[`wK.${l}`] = mm(n1T, dK);
+      grads[`wV.${l}`] = mm(n1T, dV);
+      const dNorm1 = mm(dQ, T(this.wQ[l]));
+      MatrixMath.addInPlace(dNorm1, mm(dK, T(this.wK[l])));
+      MatrixMath.addInPlace(dNorm1, mm(dV, T(this.wV[l])));
+
+      // norm1 = LN(x)
+      MatrixMath.addInPlace(dInput, MatrixMath.layerNormBackward(cache.input, dNorm1));
 
       dX = dInput;
     }

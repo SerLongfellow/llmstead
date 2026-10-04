@@ -35,10 +35,12 @@ export interface LayerInspection {
   attentionWeights: number[][][]; // Softmax + Causal Masking applied
   headOutputs: number[][][]; // [headIndex][seqLen][headDim]
   concatOutput: number[][]; // [seqLen][dModel]
-  norm1Output: number[][]; // [seqLen][dModel]
+  norm1Output: number[][]; // [seqLen][dModel] LayerNorm of the block input: what attention reads
+  afterAttention: number[][]; // [seqLen][dModel] block input + attention output (residual add)
+  norm2Output: number[][]; // [seqLen][dModel] LayerNorm of afterAttention: what the MLP reads
   mlpHidden: number[][]; // [seqLen][dModel * mlpRatio]
   mlpOutput: number[][]; // [seqLen][dModel]
-  norm2Output: number[][]; // [seqLen][dModel]
+  blockOutput: number[][]; // [seqLen][dModel] afterAttention + MLP output (residual add)
 }
 
 export interface StepInspectionData {

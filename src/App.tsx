@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { SavedSession, SaveStatus, TrainingHistory, loadSession, saveSession, clearSession } from './persistence';
 import { DatasetOption, StepInspectionData, TransformerConfig } from './types';
 import { MicroTransformer } from './engine/transformer';
 import { BPETokenizer } from './engine/bpeTokenizer';
 import { SAMPLE_DATASETS, samplePromptFor } from './engine/datasets';
+import { ExportModal } from './components/ExportModal';
 import { Navbar } from './components/Navbar';
 import { SetupView } from './components/SetupView';
 import { TrainingDashboard } from './components/TrainingDashboard';
@@ -63,7 +64,7 @@ export default function App() {
 }
 
 
-type RestoreNote = { kind: 'restored'; step: number; savedAt: number } | { kind: 'discarded' };
+type RestoreNote = { kind: 'restored'; step: number; savedAt: number } | { kind: 'discarded'; reason: 'vocabulary' | 'architecture' };
 
 function Workbench({ saved }: { saved: SavedSession | null }) {
   // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches)
@@ -98,10 +99,11 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   const restoredModel = useRef<MicroTransformer | null>(null);
   const [restoreNote, setRestoreNote] = useState<RestoreNote | null>(() => {
     if (!saved) return null;
+    if (saved.outdatedModel) return saved.history.stepCount > 0 ? { kind: 'discarded', reason: 'architecture' } : null;
     const vocabulary = Array.from({ length: actualVocab }, (_, id) => tokenizer.decode([id]));
     const sameVocab = vocabulary.length === saved.vocabulary.length && vocabulary.every((t, i) => t === saved.vocabulary[i]);
     const m = new MicroTransformer({ ...config, vocabSize: actualVocab });
-    if (!sameVocab || !m.importState(saved.model)) return { kind: 'discarded' };
+    if (!sameVocab || !m.importState(saved.model)) return { kind: 'discarded', reason: 'vocabulary' };
     restoredModel.current = m;
     return { kind: 'restored', step: saved.history.stepCount, savedAt: saved.savedAt };
   });
@@ -185,6 +187,8 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   };
 
   const [isTraining, setIsTraining] = useState<boolean>(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const closeExport = useCallback(() => setExportOpen(false), []);
 
   // ── Autosave ──────────────────────────────────────────────────────────────
   // Anything that changes the session marks it dirty; it's written every AUTOSAVE_MS, when
@@ -247,6 +251,16 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTraining={isTraining}
+        onExport={() => setExportOpen(true)}
+      />
+      <ExportModal
+        open={exportOpen}
+        onClose={closeExport}
+        model={model}
+        tokenizer={tokenizer}
+        selectedDataset={selectedDataset}
+        stepCount={history.current.stepCount}
+        trainingBusy={isTraining}
       />
 
       <main style={{ minHeight: '80vh' }}>
@@ -263,6 +277,12 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
                 <>
                   <b style={{ color: 'var(--text-main)' }}>Welcome back.</b> Your model was restored from step #{restoreNote.step.toLocaleString()}
                   {' '}(saved in this browser {new Date(restoreNote.savedAt).toLocaleString()}).
+                </>
+              ) : restoreNote.reason === 'architecture' ? (
+                <>
+                  Your saved model couldn't be restored: LLMStead now uses GPT-2's block layout (normalizing before each half
+                  instead of after), so weights trained on the old layout don't fit. Your settings were kept; you're starting
+                  with a fresh model.
                 </>
               ) : (
                 <>

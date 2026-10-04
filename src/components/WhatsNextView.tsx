@@ -51,16 +51,16 @@ const STAGES: Stage[] = [
         longer is cheaper to run once millions of people use it.
       </>,
       <>
-        The architecture gets refinements rather than a redesign. Most current models normalize <i>before</i> each half of
-        the block (pre-LN, usually RMSNorm), encode position by rotating the queries and keys (RoPE) instead of adding a
-        position table, and use a gated MLP (SwiGLU). Near the end, many runs switch to a smaller set of high-quality data
+        The architecture gets refinements rather than a redesign. Like LLMStead, current models normalize <i>before</i> each
+        half of the block (pre-LN), though usually with the cheaper RMSNorm. They also encode position by rotating the
+        queries and keys (RoPE) instead of adding a position table, and use a gated MLP (SwiGLU). Near the end, many runs switch to a smaller set of high-quality data
         and stretch the context window to tens or hundreds of thousands of tokens.
       </>,
     ],
     terms: [
       ['Parameters', 'The model\'s learned numbers (its weights). "405B" in a model name means 405 billion of them.'],
       ['CPU / GPU', 'A CPU is your computer\'s general-purpose processor; LLMStead trains on it. A GPU (graphics processing unit) is a chip built to do thousands of multiplications at once, which is what training mostly is.'],
-      ['pre-LN', 'Normalizing the vector before each half of a transformer block instead of after it (LLMStead normalizes after, "post-LN"). Deep models train more stably this way.'],
+      ['pre-LN', 'Normalizing a copy of the vector before each half of a transformer block, instead of normalizing the vector itself after each half as the original Transformer did ("post-LN"). Deep models train more stably this way; GPT-2 and LLMStead use it.'],
       ['RMSNorm', 'Root-mean-square normalization: a cheaper layer norm that only rescales the vector to a standard size, skipping the "subtract the average" step.'],
       ['RoPE', 'Rotary position embedding: instead of adding a position vector (as LLMStead does), each query and key is rotated by an angle that depends on its position, so attention can tell how far apart two tokens are.'],
       ['MLP / SwiGLU', 'The MLP is the per-token network in each block (see Look inside). SwiGLU is a "gated" version: two projections side by side, one of which decides how much of the other to let through, number by number.'],

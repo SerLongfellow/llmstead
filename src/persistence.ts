@@ -8,7 +8,12 @@ import { DatasetOption, TransformerConfig } from './types';
 import { ModelState } from './engine/transformer';
 
 /** Bump when the saved shape changes; older saves are then ignored */
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
+/**
+ * Version 1 saves came from the post-LayerNorm model. Their settings and datasets still load,
+ * but the weights were trained for a different architecture, so they're marked outdated.
+ */
+const POST_LN_VERSION = 1;
 const DB_NAME = 'llmstead';
 const STORE = 'autosave';
 const KEY = 'latest';
@@ -35,6 +40,8 @@ export interface SavedSession {
   testSentence: string;
   model: ModelState;
   history: TrainingHistory;
+  /** Set on load for saves whose weights belong to an older architecture (see POST_LN_VERSION) */
+  outdatedModel?: boolean;
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -67,6 +74,7 @@ async function run<T>(mode: IDBTransactionMode, op: (store: IDBObjectStore) => I
 export async function loadSession(): Promise<SavedSession | null> {
   try {
     const saved = (await run('readonly', s => s.get(KEY))) as SavedSession | undefined;
+    if (saved && saved.version === POST_LN_VERSION) return { ...saved, outdatedModel: true };
     return saved && saved.version === SAVE_VERSION ? saved : null;
   } catch {
     return null;
