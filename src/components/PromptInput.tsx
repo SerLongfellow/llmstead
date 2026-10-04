@@ -42,8 +42,10 @@ export const PromptInput: React.FC<{
   />
 );
 
-export const PromptHint: React.FC = () => (
+/** `live`: the box has no Run button because its view updates as you type */
+export const PromptHint: React.FC<{ live?: boolean }> = ({ live }) => (
   <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-    Enter adds a new line (the model reads line breaks like any other character); {RUN_SHORTCUT} runs.
+    Enter adds a new line (the model reads line breaks like any other character)
+    {live ? '. Everything below updates as you type.' : <>; {RUN_SHORTCUT} runs.</>}
   </span>
 );

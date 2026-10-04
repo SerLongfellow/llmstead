@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BPETokenizerState, StepInspectionData, TransformerConfig } from '../types';
 import { BPETokenizer } from '../engine/bpeTokenizer';
-import { Sparkles, ChevronRight, Workflow, Repeat } from 'lucide-react';
+import { ChevronRight, Workflow, Repeat } from 'lucide-react';
 import { AttentionGrid } from './AttentionGrid';
 import { MergeHistory } from './MergeHistory';
 import { showTok, cosine, TokenChip } from './tokenUi';
 import { EmbeddingSpace } from './EmbeddingSpace';
 import { GoDeeper } from './GoDeeper';
 import { KeyPanel } from './KeyPanel';
-import { PromptInput, PromptHint, ShortcutKey } from './PromptInput';
+import { PromptInput, PromptHint } from './PromptInput';
 import { THEME, rgb } from '../styles/theme';
 import { MicroTransformer } from '../engine/transformer';
 
@@ -786,13 +786,8 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
           <Workflow size={20} color="var(--accent-cyan)" />
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>One Forward Pass, Start to Finish</h2>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-          <PromptInput value={testInput} onChange={setTestInput} onSubmit={onRunInspect} placeholder="Enter some text to run inference" style={{ flex: 1, fontSize: '0.95rem' }} />
-          <button className="btn-primary" onClick={onRunInspect}>
-            <Sparkles size={16} /> Run <ShortcutKey />
-          </button>
-        </div>
-        <PromptHint />
+        <PromptInput value={testInput} onChange={setTestInput} onSubmit={onRunInspect} placeholder="Enter some text to run inference" style={{ fontSize: '0.95rem' }} />
+        <PromptHint live />
         {testInput.length === 0 && (
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 8 }}>
             Enter some text to run inference. Until then, the sample prompt is shown below.
