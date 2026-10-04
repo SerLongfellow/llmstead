@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { TransformerConfig } from '../types';
 import { REFERENCE_MODELS, FRONTIER_NOTE, compact } from '../engine/referenceModels';
 
@@ -32,6 +32,19 @@ export const ScaleComparison: React.FC<ScaleComparisonProps> = ({ config, paramC
   const LOG_MIN = 4;
   const LOG_MAX = 12;
   const pct = (n: number) => ((Math.log10(n) - LOG_MIN) / (LOG_MAX - LOG_MIN)) * 100;
+  // Label every power of ten if the axis is wide enough, else every 2nd or 4th (phones)
+  const axisRef = useRef<HTMLDivElement>(null);
+  const [axisWidth, setAxisWidth] = useState(400);
+  useLayoutEffect(() => {
+    const el = axisRef.current;
+    if (!el) return;
+    setAxisWidth(el.getBoundingClientRect().width);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([e]) => setAxisWidth(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const labelStep = axisWidth >= 300 ? 1 : axisWidth >= 160 ? 2 : 4;
   const gpt3 = REFERENCE_MODELS.find(m => m.name === 'GPT-3')!;
   const r = gpt3.params / paramCount;
   const ratio = r >= 1e6 ? `${(r / 1e6).toFixed(1).replace(/\.0$/, '')} million` : r >= 1e3 ? `${Math.round(r / 1e3).toLocaleString()} thousand` : Math.round(r).toLocaleString();
@@ -55,7 +68,7 @@ export const ScaleComparison: React.FC<ScaleComparisonProps> = ({ config, paramC
             ))}
           </div>
           {[...rows].sort((a, b) => a.params - b.params).map(r => (
-            <div key={r.name} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 60px', alignItems: 'center', fontSize: '0.78rem' }}>
+            <div key={r.name} style={{ display: 'grid', gridTemplateColumns: '130px minmax(0, 1fr) 60px', alignItems: 'center', fontSize: '0.78rem' }}>
               <span style={{ color: r.mine ? 'var(--accent-amber)' : 'var(--text-muted)', fontWeight: r.mine ? 700 : 500 }}>{r.name}</span>
               <div style={{ height: 12, position: 'relative' }}>
                 <div
@@ -70,11 +83,11 @@ export const ScaleComparison: React.FC<ScaleComparisonProps> = ({ config, paramC
               <span className="font-mono" style={{ textAlign: 'right', color: r.mine ? 'var(--accent-amber)' : 'var(--text-main)' }}>{compact(r.params)}</span>
             </div>
           ))}
-          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr 60px', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '130px minmax(0, 1fr) 60px', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
             <span />
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              {Array.from({ length: LOG_MAX - LOG_MIN + 1 }, (_, i) => (
-                <span key={i} className="font-mono">{compact(10 ** (LOG_MIN + i))}</span>
+            <div ref={axisRef} style={{ display: 'flex', justifyContent: 'space-between' }}>
+              {Array.from({ length: Math.floor((LOG_MAX - LOG_MIN) / labelStep) + 1 }, (_, i) => (
+                <span key={i} className="font-mono">{compact(10 ** (LOG_MIN + labelStep * i))}</span>
               ))}
             </div>
           </div>

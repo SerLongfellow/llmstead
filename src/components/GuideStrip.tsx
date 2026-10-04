@@ -15,6 +15,7 @@ export const GuideStrip: React.FC<GuideStripProps> = ({ step, title, children, n
     style={{
       display: 'flex',
       alignItems: 'center',
+      flexWrap: 'wrap', // on narrow screens the Next button drops below the text
       gap: 14,
       padding: '12px 16px',
       marginBottom: 20,
@@ -24,14 +25,14 @@ export const GuideStrip: React.FC<GuideStripProps> = ({ step, title, children, n
     }}
   >
     <Lightbulb size={18} color="var(--primary)" style={{ flexShrink: 0 }} />
-    <div style={{ flex: 1, fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+    <div style={{ flex: '1 1 220px', minWidth: 0, fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
       <span style={{ fontWeight: 700, color: 'var(--text-main)', marginRight: 8 }}>
         Step {step}: {title}
       </span>
       {children}
     </div>
     {next && (
-      <button className="btn-primary" onClick={next.onClick} style={{ flexShrink: 0, padding: '6px 12px', fontSize: '0.8rem' }}>
+      <button className="btn-primary" onClick={next.onClick} style={{ flexShrink: 0, marginLeft: 'auto', padding: '6px 12px', fontSize: '0.8rem' }}>
         {next.label} <ArrowRight size={14} />
       </button>
     )}
