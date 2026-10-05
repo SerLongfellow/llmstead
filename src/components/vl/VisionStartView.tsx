@@ -148,11 +148,12 @@ export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, on
         <BookA size={16} color="var(--accent-purple)" style={{ flexShrink: 0, marginTop: 2 }} />
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
           <b style={{ color: 'var(--text-main)' }}>What's a "tower"?</b> One of the separate networks in a model that takes in more
-          than one kind of input. Each is its own stack of transformer layers, drawn tall in diagrams like a tower. CLIP has two: an{' '}
+          than one kind of input. Each is its own stack of transformer layers; papers usually draw them as tall stacks standing side
+          by side, hence the name. CLIP has two, the two boxes in the middle of the diagram above: an{' '}
           <b style={{ color: 'var(--text-main)' }}>image tower</b> that reads the picture's patches, and a{' '}
           <b style={{ color: 'var(--text-main)' }}>text tower</b> that reads the caption's words. They share no weights and never
-          see each other's input; each ends in one vector, and the two vectors meet only at the top, where they're compared. (This
-          design is also called a two-tower model or dual encoder.)
+          see each other's input. Each ends in one vector, and the two vectors only meet at the very end, in the shared space on
+          the right, where they're compared. (This design is also called a two-tower model or dual encoder.)
         </p>
       </div>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
