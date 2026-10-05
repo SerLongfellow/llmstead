@@ -1,9 +1,12 @@
 import React from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleSlash, FlaskConical, MessageSquareText } from 'lucide-react';
 import { VlmPipeline } from './VlmPipeline';
+import { VlmEncoder } from './visionSettings';
 
 interface VlmStartViewProps {
   onNavigate: (tab: string) => void;
+  eyes: VlmEncoder;                // which encoder the VLM is using
+  pretrainedSteps: number | null;  // the ready-made CLIP's training steps, once loaded
   clipSteps: number;     // how far the CLIP (Images · CLIP mode) has trained
   clipReady: boolean;
   onOpenClip: () => void;
@@ -62,7 +65,9 @@ const EXPERIMENTS = [
   },
 ];
 
-export const VlmStartView: React.FC<VlmStartViewProps> = ({ onNavigate, clipSteps, clipReady, onOpenClip, guidesHidden, onShowGuides }) => (
+export const VlmStartView: React.FC<VlmStartViewProps> = ({ onNavigate, eyes, pretrainedSteps, clipSteps, clipReady, onOpenClip, guidesHidden, onShowGuides }) => {
+  const ok = eyes === 'pretrained' || (eyes === 'clip' && clipReady);
+  return (
   <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
     <div className="glass-panel" style={{ padding: '32px 32px 28px', display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <div style={{ background: 'var(--primary)', borderRadius: 14, padding: 14, display: 'flex', color: '#ffffff' }}>
@@ -73,7 +78,7 @@ export const VlmStartView: React.FC<VlmStartViewProps> = ({ onNavigate, clipStep
         <p style={{ color: 'var(--text-muted)', lineHeight: 1.65 }}>
           A CLIP can tell which caption fits a picture, but it can't say anything. A <b style={{ color: 'var(--text-main)' }}>vision-language
           model</b> (VLM) can: ask "what colour is the shape?" and it writes the answer. Here you build a tiny one the way LLaVA (2023)
-          was built, by giving a small GPT a pair of eyes: the image tower of the CLIP you trained in the Images · CLIP mode.
+          was built, by giving a small GPT a pair of eyes: the image tower of a CLIP like the one in the Images · CLIP mode.
         </p>
       </div>
     </div>
@@ -81,11 +86,19 @@ export const VlmStartView: React.FC<VlmStartViewProps> = ({ onNavigate, clipStep
     {/* The CLIP it depends on */}
     <div
       className="glass-panel"
-      style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderColor: clipReady ? undefined : 'var(--amber-tint)' }}
+      style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', borderColor: ok ? undefined : 'var(--amber-tint)' }}
     >
-      {clipReady ? <CheckCircle2 size={18} color="var(--accent-emerald)" /> : <AlertTriangle size={18} color="var(--accent-amber)" />}
+      {ok ? <CheckCircle2 size={18} color="var(--accent-emerald)" /> : <AlertTriangle size={18} color="var(--accent-amber)" />}
       <span style={{ flex: '1 1 300px', fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
-        {clipReady ? (
+        {eyes === 'pretrained' ? (
+          <>
+            <b style={{ color: 'var(--text-main)' }}>Ready to go:</b> it starts with ready-made eyes, a CLIP trained with this site's own
+            code{pretrainedSteps ? <> for {pretrainedSteps.toLocaleString()} steps</> : null}. For the full journey, train your own in
+            Images · CLIP, then pick "Your CLIP" in Set up.
+          </>
+        ) : eyes === 'random' ? (
+          <>It's using untrained eyes, for comparison. Pick the ready-made CLIP or your own in Set up.</>
+        ) : clipReady ? (
           <>Your CLIP has trained for {clipSteps.toLocaleString()} steps, so it's ready to lend its eyes.</>
         ) : (
           <>
@@ -94,8 +107,8 @@ export const VlmStartView: React.FC<VlmStartViewProps> = ({ onNavigate, clipStep
           </>
         )}
       </span>
-      <button className={clipReady ? 'btn-secondary' : 'btn-primary'} onClick={onOpenClip} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
-        {clipReady ? 'Open Images · CLIP' : 'Train the CLIP'} <ArrowRight size={14} />
+      <button className={ok ? 'btn-secondary' : 'btn-primary'} onClick={onOpenClip} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+        {ok ? 'Open Images · CLIP' : 'Train the CLIP'} <ArrowRight size={14} />
       </button>
     </div>
 
@@ -176,4 +189,5 @@ export const VlmStartView: React.FC<VlmStartViewProps> = ({ onNavigate, clipStep
       )}
     </div>
   </div>
-);
+  );
+};

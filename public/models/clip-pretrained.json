@@ -1,0 +1,181 @@
+{
+  "format": 1,
+  "config": {
+    "imageSize": 24,
+    "patchSize": 8,
+    "dModel": 32,
+    "numHeads": 4,
+    "imageLayers": 2,
+    "textLayers": 1,
+    "mlpRatio": 2,
+    "dEmbed": 16,
+    "vocabSize": 22,
+    "maxWords": 12,
+    "falseNegatives": "ignore"
+  },
+  "data": {
+    "detail": "position",
+    "heldOut": [
+      {
+        "colour": 1,
+        "shape": 2
+      },
+      {
+        "colour": 3,
+        "shape": 3
+      }
+    ],
+    "patchSize": 8
+  },
+  "training": {
+    "seed": 1,
+    "steps": 6000,
+    "batchSize": 16,
+    "learningRate": 0.001
+  },
+  "matrices": [
+    {
+      "name": "img.wPatch",
+      "rows": 192,
+      "cols": 32
+    },
+    {
+      "name": "img.wPos",
+      "rows": 9,
+      "cols": 32
+    },
+    {
+      "name": "img.wQ.0",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "img.wK.0",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "img.wV.0",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "img.wO.0",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "img.wMlp1.0",
+      "rows": 32,
+      "cols": 64
+    },
+    {
+      "name": "img.wMlp2.0",
+      "rows": 64,
+      "cols": 32
+    },
+    {
+      "name": "img.wQ.1",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "img.wK.1",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "img.wV.1",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "img.wO.1",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "img.wMlp1.1",
+      "rows": 32,
+      "cols": 64
+    },
+    {
+      "name": "img.wMlp2.1",
+      "rows": 64,
+      "cols": 32
+    },
+    {
+      "name": "img.wProj",
+      "rows": 32,
+      "cols": 16
+    },
+    {
+      "name": "txt.wTokenEmbed",
+      "rows": 22,
+      "cols": 32
+    },
+    {
+      "name": "txt.wPos",
+      "rows": 12,
+      "cols": 32
+    },
+    {
+      "name": "txt.wQ.0",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "txt.wK.0",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "txt.wV.0",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "txt.wO.0",
+      "rows": 32,
+      "cols": 32
+    },
+    {
+      "name": "txt.wMlp1.0",
+      "rows": 32,
+      "cols": 64
+    },
+    {
+      "name": "txt.wMlp2.0",
+      "rows": 64,
+      "cols": 32
+    },
+    {
+      "name": "txt.wProj",
+      "rows": 32,
+      "cols": 16
+    },
+    {
+      "name": "logScale",
+      "rows": 1,
+      "cols": 1
+    }
+  ],
+  "scores": {
+    "seen": {
+      "count": 128,
+      "exact": 0.96875,
+      "colour": 1,
+      "shape": 0.96875,
+      "where": 1,
+      "size": null
+    },
+    "heldOut": {
+      "count": 64,
+      "exact": 0.59375,
+      "colour": 0.953125,
+      "shape": 0.640625,
+      "where": 1,
+      "size": null
+    }
+  }
+}

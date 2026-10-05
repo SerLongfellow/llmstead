@@ -7,7 +7,7 @@ import { MicroVlm } from '../../engine/vl/vlm';
 import { VQA_TASKS, questionFor } from '../../engine/vl/vlmData';
 import { InfoTooltip } from '../InfoTooltip';
 import { ImageCanvas } from './ImageCanvas';
-import type { VisionCopy } from './VisionWorkbench';
+import type { PretrainedEyes, VisionCopy } from './VisionWorkbench';
 import { VlmPipeline } from './VlmPipeline';
 import { VlmSettings } from './visionSettings';
 
@@ -15,7 +15,8 @@ interface VlmSetupViewProps {
   settings: VlmSettings;
   onChange: (s: VlmSettings) => void;
   vlm: MicroVlm;
-  visionCopy: VisionCopy;   // the encoder in use (a CLIP copy, or the untrained one)
+  visionCopy: VisionCopy;   // the encoder in use (the ready-made CLIP, a copy of yours, or the untrained one)
+  pretrained: PretrainedEyes | null;
   clipSteps: number;        // where the live CLIP is now
   clipReady: boolean;       // whether the copy has trained enough to be worth using
   onRefreshCopy: () => void;
@@ -47,8 +48,10 @@ const Choice = <T extends string | number>({ options, value, onPick }: { options
 );
 
 export const VlmSetupView: React.FC<VlmSetupViewProps> = ({
-  settings, onChange, vlm, visionCopy, clipSteps, clipReady, onRefreshCopy, onTrainClip, sample,
+  settings, onChange, vlm, visionCopy, pretrained, clipSteps, clipReady, onRefreshCopy, onTrainClip, sample,
 }) => {
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '–' : `${Math.round(v * 100)}%`);
+  const ready = pretrained?.status === 'ready' ? pretrained.manifest : null;
   const set = (patch: Partial<VlmSettings>) => onChange({ ...settings, ...patch });
   const params = vlm.getParameterCount();
   // One example of every question, about the sample picture
@@ -76,15 +79,31 @@ export const VlmSetupView: React.FC<VlmSetupViewProps> = ({
       <Section n={1} title="The eyes: which vision encoder" icon={<Eye size={18} color="var(--accent-cyan)" />}>
         <Choice
           options={[
-            { id: 'clip', label: `Your CLIP (copy from step #${settings.encoder === 'clip' ? visionCopy.step.toLocaleString() : '…'})` },
-            { id: 'random', label: 'An untrained encoder (to compare)' },
+            ...(pretrained?.status === 'failed' ? [] : [{ id: 'pretrained' as const, label: 'Ready-made CLIP (ships with the site)' }]),
+            { id: 'clip' as const, label: settings.encoder === 'clip' ? `Your CLIP (copy from step #${visionCopy.step.toLocaleString()})` : 'Your CLIP' },
+            { id: 'random' as const, label: 'Untrained (to compare)' },
           ]}
           value={settings.encoder}
           onPick={encoder => set({ encoder })}
         />
+        {settings.encoder === 'pretrained' && ready && (
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            A CLIP trained ahead of time with this site's own code and default settings ({ready.training.steps.toLocaleString()}{' '}
+            steps, batch {ready.training.batchSize}, captions like "a red circle at the top left"), the same as you'd get by training one
+            in Images · CLIP for a few minutes. Its own test: the whole caption right for {pct(ready.scores.seen.exact)} of test pictures
+            (colour {pct(ready.scores.seen.colour)}, shape {pct(ready.scores.seen.shape)}, where {pct(ready.scores.seen.where)})
+            {ready.scores.heldOut ? <>, and {pct(ready.scores.heldOut.exact)} for never-seen combinations</> : null}. Training your own and
+            picking "Your CLIP" shows the whole journey.
+          </p>
+        )}
+        {pretrained?.status === 'failed' && (
+          <p style={{ fontSize: '0.8rem', color: 'var(--accent-amber)', lineHeight: 1.6 }}>
+            The ready-made CLIP couldn't be loaded ({pretrained.reason}), so this uses your own CLIP instead.
+          </p>
+        )}
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-          LLaVA uses OpenAI's CLIP image tower the same way: trained first, on its own, then frozen. The VLM uses a{' '}
-          <i>copy</i> of yours, so training the CLIP further doesn't change the VLM's eyes while it learns. Pictures are cut into{' '}
+          LLaVA uses OpenAI's CLIP image tower the same way: trained first, on its own, then frozen. Your CLIP is used as a{' '}
+          <i>copy</i>, so training it further doesn't change the VLM's eyes while it learns. Pictures are cut into{' '}
           {visionCopy.clip.config.patchSize}-pixel patches ({vlm.numPatches} image tokens)
           {visionCopy.data.heldOut.length ? <>, and {visionCopy.data.heldOut.map(comboName).join(' and ')} are never shown to either model</> : null}.
         </p>

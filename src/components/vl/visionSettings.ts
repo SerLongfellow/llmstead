@@ -51,10 +51,16 @@ export const dataFor = (s: VisionSettings): ClipData => ({
 
 // ── Stage 2: the vision-language model ──
 
-/** What the VLM stage lets you change */
+/**
+ * The VLM's eyes: the ready-made CLIP that ships with the site, a frozen copy of the CLIP you
+ * trained, or an untrained one (for comparison)
+ */
+export type VlmEncoder = 'pretrained' | 'clip' | 'random';
+
+/** What the VLM mode lets you change */
 export interface VlmSettings {
   // Set up (changing the encoder or the language model's size starts the VLM over)
-  encoder: 'clip' | 'random';   // a frozen copy of your CLIP's image tower, or an untrained one
+  encoder: VlmEncoder;
   dModel: number;
   numLayers: number;
   tasks: VqaTask[];              // question kinds trained on in phases 0 and 2
@@ -68,7 +74,7 @@ export interface VlmSettings {
 export const PHASE_LR: Record<VlmPhase, number> = { 0: 0.001, 1: 0.003, 2: 0.001 };
 
 export const DEFAULT_VLM_SETTINGS: VlmSettings = {
-  encoder: 'clip',
+  encoder: 'pretrained',
   dModel: DEFAULT_VLM_CONFIG.dModel,
   numLayers: DEFAULT_VLM_CONFIG.numLayers,
   tasks: VQA_TASKS.map(t => t.id),

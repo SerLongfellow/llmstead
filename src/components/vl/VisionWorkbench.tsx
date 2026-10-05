@@ -4,6 +4,7 @@ import { MicroClip } from '../../engine/vl/clip';
 import { ClipData, testPairs } from '../../engine/vl/clipData';
 import { MicroVlm } from '../../engine/vl/vlm';
 import { VlmDataSettings } from '../../engine/vl/vlmTraining';
+import { PretrainedManifest, fetchPretrainedClip } from '../../engine/vl/pretrained';
 import { GuideStrip } from '../GuideStrip';
 import { ModeSwitchProps, Navbar } from '../Navbar';
 import { VisionInsideView } from './VisionInsideView';
@@ -37,6 +38,12 @@ interface VisionWorkbenchProps {
   modeSwitch: ModeSwitchProps;
   onTrainingChange: (training: { clip: boolean; vlm: boolean }) => void;
 }
+
+/** The ready-made CLIP shipped in public/models, fetched the first time the VLM mode is opened */
+export type PretrainedEyes =
+  | { status: 'loading' }
+  | { status: 'ready'; clip: MicroClip; manifest: PretrainedManifest }
+  | { status: 'failed'; reason: string };
 
 /** The VLM's vision encoder: a frozen copy of the CLIP, and what it was trained on */
 export interface VisionCopy {
@@ -104,7 +111,29 @@ export const VisionWorkbench: React.FC<VisionWorkbenchProps> = ({ mode, modeSwit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  const encoder = vlmSettings.encoder === 'clip' ? visionCopy : visionCopy && { clip: untrained, step: 0, data };
+  // The ready-made eyes: fetched once, used by default; if they can't be loaded, fall back to your own CLIP
+  const [pretrained, setPretrained] = useState<PretrainedEyes | null>(null);
+  const pretrainedRequested = useRef(false);
+  useEffect(() => {
+    if (mode !== 'vlm' || pretrainedRequested.current) return;
+    pretrainedRequested.current = true;
+    setPretrained({ status: 'loading' });
+    fetchPretrainedClip()
+      .then(r => setPretrained({ status: 'ready', ...r }))
+      .catch((e: Error) => setPretrained({ status: 'failed', reason: e.message }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+  useEffect(() => {
+    if (pretrained?.status === 'failed' && vlmSettings.encoder === 'pretrained') setVlmSettings(s => ({ ...s, encoder: 'clip' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pretrained]);
+  const pretrainedCopy = useMemo<VisionCopy | null>(
+    () => (pretrained?.status === 'ready' ? { clip: pretrained.clip, step: pretrained.manifest.training.steps, data: pretrained.manifest.data } : null),
+    [pretrained]
+  );
+
+  const encoder =
+    vlmSettings.encoder === 'pretrained' ? pretrainedCopy : vlmSettings.encoder === 'clip' ? visionCopy : visionCopy && { clip: untrained, step: 0, data };
   const vlm = useMemo(
     () => (encoder ? new MicroVlm(encoder.clip, vlmConfigFor(vlmSettings)) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -213,6 +242,8 @@ export const VisionWorkbench: React.FC<VisionWorkbenchProps> = ({ mode, modeSwit
           {vlmTab === 'start' && (
             <VlmStartView
               onNavigate={setVlmTab}
+              eyes={vlmSettings.encoder}
+              pretrainedSteps={pretrainedCopy?.step ?? null}
               clipSteps={model.steps}
               clipReady={model.steps >= CLIP_READY_STEPS}
               onOpenClip={() => openClipTraining(false)}
@@ -231,6 +262,7 @@ export const VisionWorkbench: React.FC<VisionWorkbenchProps> = ({ mode, modeSwit
                 onChange={setVlmSettings}
                 vlm={vlm}
                 visionCopy={encoder}
+                pretrained={pretrained}
                 clipSteps={model.steps}
                 clipReady={(visionCopy?.step ?? 0) >= CLIP_READY_STEPS}
                 onRefreshCopy={() => {
@@ -270,6 +302,13 @@ export const VisionWorkbench: React.FC<VisionWorkbenchProps> = ({ mode, modeSwit
             </>
           )}
           {vlmTab === 'next' && <VlmNextView onNavigate={setVlmTab} />}
+        </main>
+      )}
+      {!vlm && shown === 'vlm' && (
+        <main style={{ minHeight: '80vh' }}>
+          <div className="glass-panel" style={{ padding: 32, maxWidth: 640, margin: '40px auto', textAlign: 'center', color: 'var(--text-muted)' }}>
+            Loading the ready-made eyes (a small trained CLIP, about 130 KB)…
+          </div>
         </main>
       )}
     </>
