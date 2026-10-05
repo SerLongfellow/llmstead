@@ -1,11 +1,10 @@
 import React from 'react';
-import { ArrowRight, BookA, CircleSlash, FlaskConical, Images } from 'lucide-react';
+import { ArrowRight, BookA, CircleSlash, FlaskConical, Images, MessageSquareText } from 'lucide-react';
 import { THEME } from '../../styles/theme';
-import { VisionStage, VlmPipeline } from './VlmPipeline';
 
 interface VisionStartViewProps {
   onNavigate: (tab: string) => void;
-  onStage: (stage: VisionStage) => void;
+  onOpenVlm: () => void;
   guidesHidden: boolean;
   onShowGuides: () => void;
 }
@@ -15,19 +14,19 @@ const STEPS = [
     step: 1,
     tab: 'setup',
     title: 'Set up',
-    text: 'See the pictures and captions (or questions) it learns from, how a picture is cut into patches, and how big the model is. The defaults train well.',
+    text: 'See the pictures and captions it learns from, how a picture is cut into patches, and how big the two towers are. The defaults train well.',
   },
   {
     step: 2,
     tab: 'training',
     title: 'Train',
-    text: 'Match: watch the right picture + caption pairs light up. Describe: run the three phases and watch it start to use the picture.',
+    text: 'Press Start and watch the right picture + caption pairs light up, and the test scores show what it learns first.',
   },
   {
     step: 3,
     tab: 'pipeline',
     title: 'Look inside',
-    text: 'Search the pictures with your own words, or ask the VLM a question and see which patches it looked at for each word of its answer.',
+    text: 'Search the pictures with your own words, see where in a picture a caption matches, and see pictures and words share one space.',
   },
 ];
 
@@ -37,9 +36,8 @@ const NOT_THIS: { title: string; text: string; link?: { label: string; tab: stri
     text: 'It only ever sees coloured shapes on a 24 × 24 grid, with captions made from about 20 words. The real CLIP learned from 400 million photos and their captions from the web.',
   },
   {
-    title: 'Not a chat model.',
-    text: "The Describe model answers six kinds of question about one shape, with about 30 words. Real vision-language models put a CLIP-style image tower in front of a large language model that already knows how to talk.",
-    link: { label: 'See how they compare →', tab: 'next' },
+    title: 'Not a model that writes.',
+    text: "CLIP only scores how well a caption fits a picture. It can rank captions you give it, but it can't describe a picture in its own words. The Images → Text · VLM mode builds one that can, on top of this CLIP.",
   },
   {
     title: 'Not how CLIP is trained for real.',
@@ -59,14 +57,6 @@ const EXPERIMENTS = [
   {
     title: 'Green triangles it has never seen',
     text: "Training never shows a green triangle or a yellow cross. Compare the dashed line on the test chart with the solid one, and search for \"a green triangle\" in Look inside. Can it combine 'green' and 'triangle' on its own?",
-  },
-  {
-    title: 'Does it actually look?',
-    text: 'In Describe, after phase 0 (text only) the answers are the same with the picture and with a blank one: it answers from habit. After phase 2 the two lines on the "Does it look" chart split apart. In Look inside, pick the blank picture and ask anything.',
-  },
-  {
-    title: 'Eyes that were never told about size',
-    text: "Your CLIP's captions say colour, shape and place, but by default never size. Freeze its image tower into the VLM and ask \"is the shape big?\": can the VLM read size out of features that were never trained to keep it?",
   },
   {
     title: 'Why the patch size matters',
@@ -123,7 +113,7 @@ const TwoTowers: React.FC = () => {
   );
 };
 
-export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, onStage, guidesHidden, onShowGuides }) => (
+export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, onOpenVlm, guidesHidden, onShowGuides }) => (
   <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
     <div className="glass-panel" style={{ padding: '32px 32px 28px', display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <div style={{ background: 'var(--primary)', borderRadius: 14, padding: 14, display: 'flex', color: '#ffffff' }}>
@@ -164,24 +154,8 @@ export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, on
       </p>
     </div>
 
-    <div className="glass-panel" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Then a second model: from matching to describing</h3>
-      <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        CLIP can tell which caption fits, but it can't say anything. The second model, Describe, builds a tiny vision-language model the way LLaVA
-        (2023) did: your CLIP's image tower, frozen, turns a picture into one vector per patch; a small <b style={{ color: 'var(--text-main)' }}>projector</b>{' '}
-        turns each into an "image token" the size of a word embedding; and a GPT reads those tokens followed by a question, then
-        writes the answer word by word.
-      </p>
-      <VlmPipeline phase={null} />
-      <div>
-        <button className="btn-secondary" onClick={() => { onStage('describe'); onNavigate('setup'); }}>
-          Go to Describe <ArrowRight size={14} />
-        </button>
-      </div>
-    </div>
-
     <div>
-      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>The same three steps for each model</h3>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>Three steps, left to right</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
         {STEPS.map(s => (
           <button
@@ -245,9 +219,21 @@ export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, on
       </div>
     </div>
 
+    <div className="glass-panel" style={{ padding: 20, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+      <MessageSquareText size={22} color="var(--accent-emerald)" style={{ flexShrink: 0 }} />
+      <p style={{ flex: '1 1 300px', fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+        <b style={{ color: 'var(--text-main)' }}>After this: give it a voice.</b> Once your CLIP has trained, the{' '}
+        <b style={{ color: 'var(--text-main)' }}>Images → Text · VLM</b> mode borrows its image tower as the eyes of a small
+        vision-language model that answers questions about pictures, the way LLaVA is built.
+      </p>
+      <button className="btn-secondary" onClick={onOpenVlm}>
+        Open Images → Text · VLM <ArrowRight size={14} />
+      </button>
+    </div>
+
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
-      <button className="btn-primary" onClick={() => { onStage('match'); onNavigate('setup'); }} style={{ padding: '12px 22px', fontSize: '0.95rem' }}>
-        Start with Match: set up your CLIP <ArrowRight size={16} />
+      <button className="btn-primary" onClick={() => onNavigate('setup')} style={{ padding: '12px 22px', fontSize: '0.95rem' }}>
+        Start: set up your CLIP <ArrowRight size={16} />
       </button>
       {guidesHidden && (
         <button className="btn-secondary" onClick={onShowGuides}>

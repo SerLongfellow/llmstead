@@ -42,14 +42,18 @@ const DEFAULT_CONFIG: TransformerConfig = {
 /** How often to autosave while something has changed (also on pause and when the tab is hidden) */
 const AUTOSAVE_MS = 10_000;
 
-// The image + text side is its own download, fetched the first time it's opened
+// The image models (CLIP and VLM) are their own download, fetched the first time either is opened
 const VisionWorkbench = lazy(() => import('./components/vl/VisionWorkbench').then(m => ({ default: m.VisionWorkbench })));
 
 /** Which model the site shows (remembered in this browser) */
 const MODE_KEY = 'llmstead.mode';
 const loadMode = (): ModelMode => {
   try {
-    return localStorage.getItem(MODE_KEY) === 'vision' ? 'vision' : 'gpt';
+    const saved = localStorage.getItem(MODE_KEY);
+    if (saved === 'clip' || saved === 'vlm') return saved;
+    // Older builds had one 'vision' mode with a CLIP / VLM switch inside it
+    if (saved === 'vision') return localStorage.getItem('llmstead.visionStage') === 'describe' ? 'vlm' : 'clip';
+    return 'gpt';
   } catch {
     return 'gpt';
   }
@@ -77,17 +81,18 @@ export default function App() {
 }
 
 /**
- * The two models, each with its own tabs: the text GPT and the image + text model. Both stay
- * mounted (just hidden) once opened, so switching never interrupts training or loses a chart.
- * The image + text side is only built the first time it's opened.
+ * The models, each with its own tabs: the text GPT, the image CLIP, and the vision-language model
+ * built on that CLIP. Each stays mounted (just hidden) once opened, so switching never interrupts
+ * training or loses a chart. The two image models share one workbench (the VLM borrows the CLIP's
+ * image tower), built the first time either is opened.
  */
 function Site({ saved }: { saved: SavedSession | null }) {
   const [mode, setModeState] = useState<ModelMode>(loadMode);
-  const [visionOpened, setVisionOpened] = useState(mode === 'vision');
-  const [training, setTraining] = useState<Record<ModelMode, boolean>>({ gpt: false, vision: false });
+  const [visionOpened, setVisionOpened] = useState(mode !== 'gpt');
+  const [training, setTraining] = useState<Record<ModelMode, boolean>>({ gpt: false, clip: false, vlm: false });
   const setMode = (next: ModelMode) => {
     setModeState(next);
-    if (next === 'vision') setVisionOpened(true);
+    if (next !== 'gpt') setVisionOpened(true);
     try {
       localStorage.setItem(MODE_KEY, next);
     } catch {
@@ -97,7 +102,7 @@ function Site({ saved }: { saved: SavedSession | null }) {
   };
   const modeSwitch: ModeSwitchProps = { mode, onChange: setMode, training };
   const onGptTraining = useCallback((t: boolean) => setTraining(prev => ({ ...prev, gpt: t })), []);
-  const onVisionTraining = useCallback((t: boolean) => setTraining(prev => ({ ...prev, vision: t })), []);
+  const onVisionTraining = useCallback((t: { clip: boolean; vlm: boolean }) => setTraining(prev => ({ ...prev, ...t })), []);
 
   return (
     <div className="app-shell" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
@@ -105,9 +110,9 @@ function Site({ saved }: { saved: SavedSession | null }) {
         <Workbench saved={saved} active={mode === 'gpt'} modeSwitch={modeSwitch} onTrainingChange={onGptTraining} />
       </div>
       {visionOpened && (
-        <div style={{ display: mode === 'vision' ? 'block' : 'none' }}>
+        <div style={{ display: mode !== 'gpt' ? 'block' : 'none' }}>
           <Suspense fallback={null}>
-            <VisionWorkbench active={mode === 'vision'} modeSwitch={modeSwitch} onTrainingChange={onVisionTraining} />
+            <VisionWorkbench mode={mode === 'gpt' ? null : mode} modeSwitch={modeSwitch} onTrainingChange={onVisionTraining} />
           </Suspense>
         </div>
       )}

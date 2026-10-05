@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Compass, Download, Type, Images } from 'lucide-react';
+import { Home, Compass, Download, Type, Images, MessageSquareText } from 'lucide-react';
 import { ChickenLogo } from './ChickenLogo';
 
 export interface NavTab {
@@ -8,8 +8,8 @@ export interface NavTab {
   step: number | null;
 }
 
-/** Which model the site is showing: the text GPT or the image + text model */
-export type ModelMode = 'gpt' | 'vision';
+/** Which model the site is showing: the text GPT, the image + text CLIP, or the vision-language model built on it */
+export type ModelMode = 'gpt' | 'clip' | 'vlm';
 
 export interface ModeSwitchProps {
   mode: ModelMode;
@@ -30,10 +30,11 @@ interface NavbarProps {
 
 const MODES: { id: ModelMode; label: string; hint: string; icon: React.ReactNode }[] = [
   { id: 'gpt', label: 'Text · GPT', hint: 'A tiny language model that learns to predict the next token', icon: <Type size={14} /> },
-  { id: 'vision', label: 'Images + Text', hint: 'A tiny CLIP that matches pictures and captions, then a tiny vision-language model that answers questions about pictures', icon: <Images size={14} /> },
+  { id: 'clip', label: 'Images · CLIP', hint: 'A tiny CLIP that learns which captions match which pictures', icon: <Images size={14} /> },
+  { id: 'vlm', label: 'Images → Text · VLM', hint: 'A tiny vision-language model, built on your CLIP, that answers questions about pictures', icon: <MessageSquareText size={14} /> },
 ];
 
-/** Switch between the two models. Both stay loaded, so switching never loses training progress. */
+/** Switch between the models. Each stays loaded once opened, so switching never loses training progress. */
 const ModeSwitch: React.FC<ModeSwitchProps> = ({ mode, onChange, training }) => (
   <div role="group" aria-label="Model" style={{ display: 'flex', gap: 4, background: 'var(--surface-inset)', padding: 3, borderRadius: 8, border: '1px solid var(--border-color)' }}>
     {MODES.map(m => {
