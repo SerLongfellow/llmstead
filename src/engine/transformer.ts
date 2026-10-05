@@ -9,6 +9,16 @@ export interface ModelState {
   optimizer: OptimizerState;
 }
 
+/**
+ * Extra inputs for a vision-language model (both optional; without them a pass is the plain GPT's):
+ * `prefix` rows sit in front of the tokens (see forward), and `lossMask[i]` says whether text
+ * position i's prediction counts toward the loss (e.g. only the answer to a question).
+ */
+export interface PrefixOptions {
+  prefix?: Matrix;
+  lossMask?: boolean[];
+}
+
 /** Settings that change the shape of the weight matrices. Changing any of these requires a fresh model. */
 export type ArchitectureConfig = Pick<
   TransformerConfig,
@@ -122,32 +132,55 @@ export class MicroTransformer {
     return { wQ: this.wQ[l], wK: this.wK[l], wV: this.wV[l], wO: this.wO[l], wMlp1: this.wMlp1[l], wMlp2: this.wMlp2[l] };
   }
 
-  /** Run a complete forward pass and capture all internal states for visualization */
-  public inspectForwardPass(tokens: number[], tokenStrings: string[]): StepInspectionData {
-    return this.forward(tokens, tokenStrings).data;
+  /**
+   * Run a complete forward pass and capture all internal states for visualization.
+   * `prefix`: see forward.
+   */
+  public inspectForwardPass(tokens: number[], tokenStrings: string[], prefix?: Matrix): StepInspectionData {
+    return this.forward(tokens, tokenStrings, prefix).data;
   }
 
-  /** Forward pass that also returns the extra per-layer values the backward pass needs */
-  private forward(tokens: number[], tokenStrings: string[]): { data: StepInspectionData; caches: BlockCache[] } {
-    const seqLen = Math.min(tokens.length, this.config.contextWindow);
+  /**
+   * Forward pass that also returns the extra per-layer values the backward pass needs.
+   *
+   * `prefix` (optional, [P x dModel]): rows that take the first P positions instead of token
+   * embeddings, with the tokens following from position P. This is how a vision-language model
+   * feeds a picture to its language model: each image patch, projected to dModel, sits where a
+   * token embedding would. Without it, the pass is exactly the plain GPT's.
+   */
+  private forward(tokens: number[], tokenStrings: string[], prefix?: Matrix): { data: StepInspectionData; caches: BlockCache[] } {
+    const P = prefix ? prefix.length : 0;
+    const seqLen = Math.min(tokens.length, this.config.contextWindow - P);
     const slicedTokens = tokens.slice(0, seqLen);
     const slicedStrings = tokenStrings.slice(0, seqLen);
     const dModel = this.config.dModel;
     const numHeads = this.config.numHeads;
 
     // 1. Embedding lookup
-    const tokenEmbeddings: Matrix = MatrixMath.zeros(seqLen, dModel);
-    const posEmbeddings: Matrix = MatrixMath.zeros(seqLen, dModel);
-    const combinedEmbeddings: Matrix = MatrixMath.zeros(seqLen, dModel);
+    const tokenEmbeddings: Matrix = MatrixMath.zeros(P + seqLen, dModel);
+    const posEmbeddings: Matrix = MatrixMath.zeros(P + seqLen, dModel);
+    const combinedEmbeddings: Matrix = MatrixMath.zeros(P + seqLen, dModel);
+
+    // Prefix rows (e.g. a picture's projected patches) are used as given, plus their position
+    for (let i = 0; i < P; i++) {
+      for (let d = 0; d < dModel; d++) {
+        const rowVal = prefix![i][d];
+        const posVal = this.wPosEmbed[i][d];
+        tokenEmbeddings[i][d] = rowVal;
+        posEmbeddings[i][d] = posVal;
+        combinedEmbeddings[i][d] = rowVal + posVal;
+      }
+    }
 
     for (let i = 0; i < seqLen; i++) {
+      const p = P + i;
       const tokId = slicedTokens[i];
       for (let d = 0; d < dModel; d++) {
         const tokVal = tokId < this.config.vocabSize ? this.wTokenEmbed[tokId][d] : 0;
-        const posVal = i < this.config.contextWindow ? this.wPosEmbed[i][d] : 0;
-        tokenEmbeddings[i][d] = tokVal;
-        posEmbeddings[i][d] = posVal;
-        combinedEmbeddings[i][d] = tokVal + posVal;
+        const posVal = p < this.config.contextWindow ? this.wPosEmbed[p][d] : 0;
+        tokenEmbeddings[p][d] = tokVal;
+        posEmbeddings[p][d] = posVal;
+        combinedEmbeddings[p][d] = tokVal + posVal;
       }
     }
 
@@ -173,8 +206,9 @@ export class MicroTransformer {
 
     const data: StepInspectionData = {
       inputString: slicedStrings.join(''),
-      tokens: slicedTokens,
-      tokenStrings: slicedStrings,
+      // Prefix positions have no token id (-1) and are labelled ▣1, ▣2, …
+      tokens: P ? [...new Array<number>(P).fill(-1), ...slicedTokens] : slicedTokens,
+      tokenStrings: P ? [...Array.from({ length: P }, (_, i) => `▣${i + 1}`), ...slicedStrings] : slicedStrings,
       tokenEmbeddings,
       positionEmbeddings: posEmbeddings,
       combinedEmbeddings,
@@ -186,24 +220,32 @@ export class MicroTransformer {
     return { data, caches };
   }
 
-  /** Mean cross-entropy of next-token predictions: L = −(1/N) Σ log P(target_i) */
-  private crossEntropy(probs: number[][], targetTokens: number[], seqLen: number): number {
+  /**
+   * Mean cross-entropy of next-token predictions: L = −(1/N) Σ log P(target_i), over the N text
+   * positions that count (all of them, unless `mask` leaves some out). Text position i is row
+   * `offset + i` of `probs` (offset = the number of prefix rows).
+   */
+  private crossEntropy(probs: number[][], targetTokens: number[], seqLen: number, offset = 0, mask?: boolean[]): number {
     let totalLoss = 0;
+    let count = 0;
     for (let i = 0; i < seqLen; i++) {
+      if (mask && !mask[i]) continue;
+      count++;
       const targetId = targetTokens[i];
-      if (targetId < probs[i].length) {
-        totalLoss -= Math.log(Math.max(probs[i][targetId], 1e-10));
+      if (targetId < probs[offset + i].length) {
+        totalLoss -= Math.log(Math.max(probs[offset + i][targetId], 1e-10));
       }
     }
-    return totalLoss / seqLen;
+    return count ? totalLoss / count : 0;
   }
 
-  /** Forward pass only (no weight updates) — used for validation loss on held-out text */
-  public evaluateLoss(inputTokens: number[], targetTokens: number[]): { loss: number; perplexity: number } {
-    const seqLen = Math.min(inputTokens.length, targetTokens.length, this.config.contextWindow);
+  /** Forward pass only (no weight updates) — used for validation loss on held-out text. `opts`: see computeGradients. */
+  public evaluateLoss(inputTokens: number[], targetTokens: number[], opts: PrefixOptions = {}): { loss: number; perplexity: number } {
+    const P = opts.prefix ? opts.prefix.length : 0;
+    const seqLen = Math.min(inputTokens.length, targetTokens.length, this.config.contextWindow - P);
     if (seqLen === 0) return { loss: 0, perplexity: 1 };
-    const forward = this.inspectForwardPass(inputTokens.slice(0, seqLen), inputTokens.slice(0, seqLen).map(String));
-    const loss = this.crossEntropy(forward.probabilities, targetTokens, seqLen);
+    const forward = this.inspectForwardPass(inputTokens.slice(0, seqLen), inputTokens.slice(0, seqLen).map(String), opts.prefix);
+    const loss = this.crossEntropy(forward.probabilities, targetTokens, seqLen, P, opts.lossMask);
     return { loss, perplexity: Math.exp(loss) };
   }
 
@@ -280,9 +322,12 @@ export class MicroTransformer {
    */
   public computeGradients(
     inputTokens: number[],
-    targetTokens: number[]
-  ): { loss: number; perplexity: number; grads: Record<string, Matrix> } {
-    const seqLen = Math.min(inputTokens.length, targetTokens.length, this.config.contextWindow);
+    targetTokens: number[],
+    opts: PrefixOptions = {}
+  ): { loss: number; perplexity: number; grads: Record<string, Matrix>; dPrefix: Matrix | null } {
+    const P = opts.prefix ? opts.prefix.length : 0;
+    const mask = opts.lossMask;
+    const seqLen = Math.min(inputTokens.length, targetTokens.length, this.config.contextWindow - P);
     const { vocabSize, contextWindow, dModel, numHeads, numLayers } = this.config;
     const T = MatrixMath.transpose;
     const mm = MatrixMath.matmul;
@@ -291,16 +336,21 @@ export class MicroTransformer {
     for (const [name, p] of Object.entries(this.getParameters())) {
       grads[name] = MatrixMath.zeros(p.length, p[0].length);
     }
-    if (seqLen === 0) return { loss: 0, perplexity: 1, grads };
+    let count = 0;
+    for (let i = 0; i < seqLen; i++) if (!mask || mask[i]) count++;
+    if (count === 0) return { loss: 0, perplexity: 1, grads, dPrefix: P ? MatrixMath.zeros(P, dModel) : null };
 
     const tokens = inputTokens.slice(0, seqLen);
-    const { data: fwd, caches } = this.forward(tokens, tokens.map(String));
-    const loss = this.crossEntropy(fwd.probabilities, targetTokens, seqLen);
+    const { data: fwd, caches } = this.forward(tokens, tokens.map(String), opts.prefix);
+    const loss = this.crossEntropy(fwd.probabilities, targetTokens, seqLen, P, mask);
 
     // ── Softmax + cross-entropy combined: ∂L/∂logits_i = (p_i − onehot(target_i)) / N
-    const dLogits: Matrix = fwd.probabilities.map((row, i) =>
-      row.map((p, k) => (p - (k === targetTokens[i] ? 1 : 0)) / seqLen)
-    );
+    // (prefix rows and masked-out positions predict nothing that counts, so their gradient is 0)
+    const dLogits: Matrix = fwd.probabilities.map((row, r) => {
+      const i = r - P;
+      if (i < 0 || (mask && !mask[i])) return row.map(() => 0);
+      return row.map((p, k) => (p - (k === targetTokens[i] ? 1 : 0)) / count);
+    });
 
     // ── Output head: logits = finalNorm · W_head
     grads.wHead = mm(T(fwd.finalNorm), dLogits);
@@ -317,16 +367,23 @@ export class MicroTransformer {
       dX = back.dInput;
     }
 
-    // ── Embeddings: x_i = tokEmbed[tok_i] + posEmbed[i]
+    // ── Embeddings: x_p = tokEmbed[tok_i] + posEmbed[p], text position i sitting at p = P + i
     for (let i = 0; i < seqLen; i++) {
+      const p = P + i;
       const tokId = tokens[i];
       for (let d = 0; d < dModel; d++) {
-        if (tokId < vocabSize) grads.wTokenEmbed[tokId][d] += dX[i][d];
-        if (i < contextWindow) grads.wPosEmbed[i][d] += dX[i][d];
+        if (tokId < vocabSize) grads.wTokenEmbed[tokId][d] += dX[p][d];
+        if (p < contextWindow) grads.wPosEmbed[p][d] += dX[p][d];
       }
     }
+    // ── Prefix rows: x_i = prefix_i + posEmbed[i], so ∂L/∂prefix_i is just dX_i
+    let dPrefix: Matrix | null = null;
+    if (P) {
+      dPrefix = dX.slice(0, P).map(row => row.slice());
+      for (let i = 0; i < P; i++) for (let d = 0; d < dModel; d++) grads.wPosEmbed[i][d] += dX[i][d];
+    }
 
-    return { loss, perplexity: Math.exp(loss), grads };
+    return { loss, perplexity: Math.exp(loss), grads, dPrefix };
   }
 
   /**

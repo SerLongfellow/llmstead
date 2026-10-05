@@ -26,6 +26,9 @@ const WHERE: string[][] = [
   ['at the bottom left', 'at the bottom', 'at the bottom right'],
 ];
 
+/** Where the shape is, in words ("at the top left", "in the middle", …) */
+export const whereWords = (labels: ShapeLabels) => WHERE[labels.row][labels.col];
+
 /** Two ways to say the same thing, so the model can't just memorize word positions */
 export const NUM_TEMPLATES = 2;
 

@@ -408,6 +408,15 @@ export class MicroClip {
     return { layers: pass.layers, embedding: pass.unit, patchMatch };
   }
 
+  /**
+   * Each patch's own output from the image tower: the final-LayerNorm rows, before they are
+   * averaged and projected into the shared space. [numPatches x dModel]. A vision-language model
+   * reads the picture through these (as LLaVA does with CLIP's patch features).
+   */
+  public patchFeatures(patches: Matrix): Matrix {
+    return this.imagePass(patches).finalNorm;
+  }
+
   /** Everything the text tower computes for one caption */
   public inspectText(tokens: number[]) {
     const pass = this.textPass(tokens);

@@ -95,6 +95,17 @@ export function drawShapeImage(labels: ShapeLabels, rand: () => number, size = 2
   return { size, pixels, labels };
 }
 
+/** The background alone, with its noise but no shape: what a "blank picture" looks like */
+export function drawBlankImage(rand: () => number, size = 24): ShapeImage {
+  const pixels = new Array(size * size * 3).fill(0);
+  for (let i = 0; i < size * size; i++) {
+    for (let c = 0; c < 3; c++) {
+      pixels[i * 3 + c] = Math.min(1, Math.max(0, BACKGROUND[c] + (rand() - 0.5) * 2 * NOISE));
+    }
+  }
+  return { size, pixels, labels: { shape: -1, colour: -1, size: -1, row: -1, col: -1 } };
+}
+
 /** Random labels, all equally likely (`allowed` can reject some, e.g. held-out combinations) */
 export function randomLabels(rand: () => number, allowed: (l: ShapeLabels) => boolean = () => true): ShapeLabels {
   for (;;) {
