@@ -30,7 +30,7 @@ interface NavbarProps {
 
 const MODES: { id: ModelMode; label: string; hint: string; icon: React.ReactNode }[] = [
   { id: 'gpt', label: 'Text · GPT', hint: 'A tiny language model that learns to predict the next token', icon: <Type size={14} /> },
-  { id: 'vision', label: 'Images + Text · CLIP', hint: 'A tiny vision-language model that learns which captions match which pictures', icon: <Images size={14} /> },
+  { id: 'vision', label: 'Images + Text', hint: 'A tiny CLIP that matches pictures and captions, then a tiny vision-language model that answers questions about pictures', icon: <Images size={14} /> },
 ];
 
 /** Switch between the two models. Both stay loaded, so switching never loses training progress. */

@@ -1,6 +1,8 @@
 import { CaptionDetail, DEFAULT_HELD_OUT } from '../../engine/vl/captions';
 import { ClipConfig, FalseNegatives } from '../../engine/vl/clip';
 import { ClipData, DEFAULT_CLIP_CONFIG } from '../../engine/vl/clipData';
+import { DEFAULT_VLM_CONFIG, VlmConfig, VlmPhase } from '../../engine/vl/vlm';
+import { VQA_TASKS, VqaTask } from '../../engine/vl/vlmData';
 
 /** Everything the image + text mode lets you change */
 export interface VisionSettings {
@@ -46,3 +48,33 @@ export const dataFor = (s: VisionSettings): ClipData => ({
   heldOut: s.heldOut ? DEFAULT_HELD_OUT : [],
   patchSize: s.patchSize,
 });
+
+// ── Stage 2: the vision-language model ──
+
+/** What the VLM stage lets you change */
+export interface VlmSettings {
+  // Set up (changing the encoder or the language model's size starts the VLM over)
+  encoder: 'clip' | 'random';   // a frozen copy of your CLIP's image tower, or an untrained one
+  dModel: number;
+  numLayers: number;
+  tasks: VqaTask[];              // question kinds trained on in phases 0 and 2
+  // Train (safe to change between and during runs)
+  phase: VlmPhase;
+  batchSize: number;
+  learningRate: number;
+}
+
+/** Each phase's starting learning rate: the projector alone (phase 1) learns faster with a bigger step */
+export const PHASE_LR: Record<VlmPhase, number> = { 0: 0.001, 1: 0.003, 2: 0.001 };
+
+export const DEFAULT_VLM_SETTINGS: VlmSettings = {
+  encoder: 'clip',
+  dModel: DEFAULT_VLM_CONFIG.dModel,
+  numLayers: DEFAULT_VLM_CONFIG.numLayers,
+  tasks: VQA_TASKS.map(t => t.id),
+  phase: 0,
+  batchSize: 8,
+  learningRate: PHASE_LR[0],
+};
+
+export const vlmConfigFor = (s: VlmSettings): VlmConfig => ({ ...DEFAULT_VLM_CONFIG, dModel: s.dModel, numLayers: s.numLayers });
