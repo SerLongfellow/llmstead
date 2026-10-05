@@ -16,7 +16,7 @@ export type CaptionDetail = 'shape' | 'position' | 'full';
 export const CAPTION_DETAILS: { id: CaptionDetail; label: string; example: string }[] = [
   { id: 'shape', label: 'Colour + shape', example: 'a red circle' },
   { id: 'position', label: '+ where', example: 'a red circle at the top left' },
-  { id: 'full', label: '+ where + size', example: 'a small red circle at the top left' },
+  { id: 'full', label: '+ size', example: 'a small red circle at the top left' },
 ];
 
 /** Where the shape is, in words, by [row][col] of the 3×3 grid */
