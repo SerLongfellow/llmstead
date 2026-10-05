@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SavedSession, SaveStatus, TrainingHistory, loadSession, saveSession, clearSession } from './persistence';
 import { DatasetOption, StepInspectionData, TransformerConfig } from './types';
 import { MicroTransformer } from './engine/transformer';
@@ -6,7 +6,7 @@ import { SAMPLE_DATASETS, DOWNLOADABLE_DATASETS, BUILT_IN_DATASET_IDS, loadDatas
 import { ProfileShape, matchingProfile, shapeOf } from './engine/modelProfiles';
 import { BACKGROUND_TOKENIZE_CHARS, prepareTokenizer, tokenizerFor } from './engine/tokenizers';
 import { ExportModal } from './components/ExportModal';
-import { Navbar } from './components/Navbar';
+import { ModeSwitchProps, ModelMode, Navbar } from './components/Navbar';
 import { SetupView } from './components/SetupView';
 import { TrainingDashboard } from './components/TrainingDashboard';
 import { PipelineView } from './components/PipelineView';
@@ -43,6 +43,23 @@ const DEFAULT_CONFIG: TransformerConfig = {
 
 /** How often to autosave while something has changed (also on pause and when the tab is hidden) */
 const AUTOSAVE_MS = 10_000;
+
+// The image models (CLIP and VLM) are their own download, fetched the first time either is opened
+const VisionWorkbench = lazy(() => import('./components/vl/VisionWorkbench').then(m => ({ default: m.VisionWorkbench })));
+
+/** Which model the site shows (remembered in this browser) */
+const MODE_KEY = 'llmstead.mode';
+const loadMode = (): ModelMode => {
+  try {
+    const saved = localStorage.getItem(MODE_KEY);
+    if (saved === 'clip' || saved === 'vlm') return saved;
+    // Older builds had one 'vision' mode with a CLIP / VLM switch inside it
+    if (saved === 'vision') return localStorage.getItem('llmstead.visionStage') === 'describe' ? 'vlm' : 'clip';
+    return 'gpt';
+  } catch {
+    return 'gpt';
+  }
+};
 
 /** Longest the first render waits for the web fonts before showing the app anyway */
 const FONT_WAIT_MS = 600;
@@ -92,7 +109,76 @@ export default function App() {
   // Loading takes a few milliseconds; show just the page background (set in index.html) rather
   // than flash the defaults, then the app fades in (.app-shell)
   if (!boot) return bootNote ? <BusyNotice text={bootNote} /> : null;
-  return <Workbench saved={boot.saved} initialDatasets={boot.datasets} downloadFailed={boot.downloadFailed} />;
+  return <Site saved={boot.saved} initialDatasets={boot.datasets} downloadFailed={boot.downloadFailed} />;
+}
+
+/**
+ * The models, each with its own tabs: the text GPT, the image CLIP, and the vision-language model
+ * built on that CLIP. Each stays mounted (just hidden) once opened, so switching never interrupts
+ * training or loses a chart. The two image models share one workbench (the VLM borrows the CLIP's
+ * image tower), built the first time either is opened.
+ */
+function Site({ saved, initialDatasets, downloadFailed }: { saved: SavedSession | null; initialDatasets: DatasetOption[]; downloadFailed: boolean }) {
+  const [mode, setModeState] = useState<ModelMode>(loadMode);
+  const [visionOpened, setVisionOpened] = useState(mode !== 'gpt');
+  const [training, setTraining] = useState<Record<ModelMode, boolean>>({ gpt: false, clip: false, vlm: false });
+  const setMode = (next: ModelMode) => {
+    setModeState(next);
+    if (next !== 'gpt') setVisionOpened(true);
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* storage unavailable: the choice just won't persist */
+    }
+    window.scrollTo(0, 0);
+  };
+  const modeSwitch: ModeSwitchProps = { mode, onChange: setMode, training };
+  const onGptTraining = useCallback((t: boolean) => setTraining(prev => ({ ...prev, gpt: t })), []);
+  const onVisionTraining = useCallback((t: { clip: boolean; vlm: boolean }) => setTraining(prev => ({ ...prev, ...t })), []);
+
+  return (
+    <div className="app-shell" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
+      <div style={{ display: mode === 'gpt' ? 'block' : 'none' }}>
+        <Workbench
+          saved={saved}
+          initialDatasets={initialDatasets}
+          downloadFailed={downloadFailed}
+          active={mode === 'gpt'}
+          modeSwitch={modeSwitch}
+          onTrainingChange={onGptTraining}
+        />
+      </div>
+      {visionOpened && (
+        <div style={{ display: mode !== 'gpt' ? 'block' : 'none' }}>
+          <Suspense fallback={null}>
+            <VisionWorkbench mode={mode === 'gpt' ? null : mode} modeSwitch={modeSwitch} onTrainingChange={onVisionTraining} />
+          </Suspense>
+        </div>
+      )}
+
+      <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+        <p>LLMStead • Raise your own models: tiny transformers, built and trained from scratch in your browser</p>
+        <p style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 14px' }}>
+          <span>Additional resources:</span>
+          {RESOURCES.map(r => (
+            <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" title={r.description} style={{ color: 'var(--text-muted)' }}>
+              {r.name}
+            </a>
+          ))}
+        </p>
+        <p style={{ marginTop: '8px' }}>
+          <a
+            href="https://github.com/SerLongfellow/llmstead"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Github size={14} /> View the source on GitHub
+          </a>
+        </p>
+      </footer>
+    </div>
+  );
 }
 
 /** Shown while a big dataset downloads or its tokenizer is built */
@@ -115,7 +201,17 @@ type RestoreNote =
   | { kind: 'discarded'; reason: 'vocabulary' | 'architecture' }
   | { kind: 'download-failed'; datasetName: string };
 
-function Workbench({ saved, initialDatasets, downloadFailed }: { saved: SavedSession | null; initialDatasets: DatasetOption[]; downloadFailed: boolean }) {
+interface WorkbenchProps {
+  saved: SavedSession | null;
+  initialDatasets: DatasetOption[];
+  downloadFailed: boolean;
+  active: boolean; // whether the GPT side is the one showing
+  modeSwitch: ModeSwitchProps;
+  onTrainingChange: (training: boolean) => void;
+}
+
+/** The text-model side of the site: a tiny GPT you can set up, train, look inside and post-train */
+function Workbench({ saved, initialDatasets, downloadFailed, active, modeSwitch, onTrainingChange }: WorkbenchProps) {
   // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches).
   // Downloadable datasets have empty text until they're picked.
   const [datasets, setDatasets] = useState<DatasetOption[]>(initialDatasets);
@@ -276,6 +372,11 @@ function Workbench({ saved, initialDatasets, downloadFailed }: { saved: SavedSes
 
   const [isTraining, setIsTraining] = useState<boolean>(false);
   const [isPostTraining, setIsPostTraining] = useState<boolean>(false);
+  // Either kind of training puts a pulsing dot on the Text · GPT mode button while another mode shows
+  useEffect(() => {
+    onTrainingChange(isTraining || isPostTraining);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTraining, isPostTraining]);
   const [exportOpen, setExportOpen] = useState(false);
 
   // ── Post-training ─────────────────────────────────────────────────────────
@@ -357,12 +458,13 @@ function Workbench({ saved, initialDatasets, downloadFailed }: { saved: SavedSes
   };
 
   return (
-    <div className="app-shell" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
+    <>
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTraining={isTraining}
         isPostTraining={isPostTraining}
+        modeSwitch={modeSwitch}
         onExport={() => setExportOpen(true)}
       />
       <ExportModal
@@ -474,7 +576,7 @@ function Workbench({ saved, initialDatasets, downloadFailed }: { saved: SavedSes
             onTrainingChange={setIsTraining}
             onChangeLearningRate={(learningRate) => setConfig(prev => ({ ...prev, learningRate }))}
             onChangeOptimizer={(optimizer) => setConfig(prev => ({ ...prev, optimizer }))}
-            visible={activeTab === 'training'}
+            visible={active && activeTab === 'training'}
             initialHistory={initialHistory}
             onHistoryChange={onHistoryChange}
             saveStatus={saveStatus}
@@ -523,7 +625,7 @@ function Workbench({ saved, initialDatasets, downloadFailed }: { saved: SavedSes
             onBeginSession={beginPostTrain}
             onRestoreBase={restorePreTrained}
             pretrainBusy={isTraining}
-            visible={activeTab === 'posttrain'}
+            visible={active && activeTab === 'posttrain'}
             onRunningChange={setIsPostTraining}
             onNavigateToTrain={() => setActiveTab('training')}
           />
@@ -531,28 +633,6 @@ function Workbench({ saved, initialDatasets, downloadFailed }: { saved: SavedSes
 
         {activeTab === 'next' && <WhatsNextView onNavigate={setActiveTab} onExport={() => setExportOpen(true)} />}
       </main>
-
-      <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-        <p>LLMStead • Raise your own models: a tiny transformer, built and trained from scratch in your browser</p>
-        <p style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 14px' }}>
-          <span>Additional resources:</span>
-          {RESOURCES.map(r => (
-            <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" title={r.description} style={{ color: 'var(--text-muted)' }}>
-              {r.name}
-            </a>
-          ))}
-        </p>
-        <p style={{ marginTop: '8px' }}>
-          <a
-            href="https://github.com/SerLongfellow/llmstead"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <Github size={14} /> View the source on GitHub
-          </a>
-        </p>
-      </footer>
-    </div>
+    </>
   );
 }

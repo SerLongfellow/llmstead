@@ -34,6 +34,17 @@ export function checkGradients(
 }
 
 /**
+ * The same check for any model (the vision models use it): its live parameters, its analytic
+ * gradients, and a function that recomputes the loss.
+ */
+export function checkGradientsOf(
+  model: { params: Record<string, Matrix>; grads: Record<string, Matrix>; lossAt: () => number },
+  opts: { samplesPerMatrix?: number; h?: number } = {}
+): GradCheckResult[] {
+  return Object.entries(model.params).map(([name, param]) => checkMatrix(name, param, model.grads[name], model.lossAt, () => {}, opts));
+}
+
+/**
  * The same check for LoRA's adapters: nudge an entry of A or B, rewrite W = W₀ + s·A·B, and
  * compare the loss change with the chain-rule gradient from LoraAdapters.adapterGradients.
  */

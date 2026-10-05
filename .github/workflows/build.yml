@@ -1,0 +1,26 @@
+# Runs the same build Cloudflare Workers Builds runs (npm run build, Node from .nvmrc), so a
+# failure (a type error, or a shipped CLIP that no longer fits the engine) turns the commit or PR
+# red and GitHub emails whoever pushed it. Cloudflare still does the real build and deploy; this
+# is the early warning, and the email. Free for public repositories.
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
