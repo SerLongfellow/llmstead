@@ -3,7 +3,7 @@ import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { Activity, FastForward, Grid3x3, Images, Pause, Play, RotateCcw, Target } from 'lucide-react';
+import { Activity, FastForward, Gauge, Grid3x3, Images, Pause, Play, RotateCcw, Target } from 'lucide-react';
 import { CAPTION_DETAILS, comboName } from '../../engine/vl/captions';
 import { MicroClip } from '../../engine/vl/clip';
 import { ClipData, Pair, chanceExact, gridPairs as makeGridPairs } from '../../engine/vl/clipData';
@@ -213,7 +213,7 @@ export const VisionTrainView: React.FC<VisionTrainViewProps> = ({
         yAxisID: 'y',
       },
       {
-        label: 'Temperature scale',
+        label: 'Confidence scale (1 / temperature)',
         data: scales,
         borderColor: THEME.purple,
         borderDash: [5, 4],
@@ -234,7 +234,7 @@ export const VisionTrainView: React.FC<VisionTrainViewProps> = ({
     scales: {
       x: { ...axis, ticks: { ...axis.ticks, maxTicksLimit: 10 } },
       y: { ...axis, title: axisTitle('Loss (lower is better)') },
-      y1: { position: 'right' as const, ticks: { color: THEME.purple }, grid: { display: false }, title: axisTitle('Scale') },
+      y1: { position: 'right' as const, ticks: { color: THEME.purple }, grid: { display: false }, title: axisTitle('Confidence scale') },
     },
   };
 
@@ -397,13 +397,14 @@ export const VisionTrainView: React.FC<VisionTrainViewProps> = ({
           <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Contrastive loss</h3>
           <InfoTooltip
             title="Contrastive loss"
-            description="For each picture: how surprised the model is by its own caption among all the captions in the batch (cross-entropy), and the same for each caption among the pictures; the loss is the average of the two. The dashed line is the learned temperature: how sharply similarities are turned into probabilities."
+            description="For each picture: how surprised the model is by its own caption among all the captions in the batch (cross-entropy), and the same for each caption among the pictures; the loss is the average of the two. The dashed line is the confidence scale (explained below the chart)."
             impact={`A model that guesses at random scores ln(batch size) ≈ ${Math.log(settings.batchSize).toFixed(2)}. Low loss only means it can tell this batch apart, not that it knows every fact in the captions (see the test scores).`}
           />
         </div>
         <div style={{ flex: 1, minHeight: 260, position: 'relative' }}>
           <Line data={lossChart} options={lossOptions} />
         </div>
+        <ScaleExplainer scale={scales.length ? scales[scales.length - 1] : model.logitScale()} />
       </div>
 
       {/* Zero-shot scores */}
@@ -435,6 +436,50 @@ export const VisionTrainView: React.FC<VisionTrainViewProps> = ({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * What the confidence scale (CLIP's learned "logit scale", 1 / temperature) does, with a worked
+ * example: two captions whose similarities to a picture are 0.8 (right) and 0.5 (wrong).
+ */
+const ScaleExplainer: React.FC<{ scale: number }> = ({ scale }) => {
+  // softmax over two scores: P(right) = 1 / (1 + e^(−scale · (0.8 − 0.5)))
+  const pRight = (s: number) => 1 / (1 + Math.exp(-s * 0.3));
+  const rows = [
+    { label: 'no scale (× 1)', s: 1 },
+    { label: `where it starts (× ${(1 / 0.07).toFixed(1)})`, s: 1 / 0.07 },
+    { label: `your model now (× ${scale.toFixed(1)})`, s: scale, now: true },
+  ];
+  return (
+    <div style={{ marginTop: 16, display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 8, background: 'var(--surface-inset)', border: '1px solid var(--border-color)' }}>
+      <Gauge size={16} color="var(--accent-purple)" style={{ flexShrink: 0, marginTop: 2 }} />
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.55, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <p>
+          <b style={{ color: 'var(--text-main)' }}>What's the confidence scale?</b> One number the model learns, like a weight. Each
+          picture-caption similarity is between −1 and 1, and the loss turns a row of them into probabilities ("which caption is
+          mine?") with a softmax. Scores that close together give flat, unsure probabilities, so every similarity is first multiplied
+          by this scale: bigger means sharper, more confident choices. Say the right caption scores 0.8 and a wrong one 0.5:
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '4px 10px', alignItems: 'center', maxWidth: 420 }}>
+          {rows.map(r => (
+            <React.Fragment key={r.label}>
+              <span style={{ color: r.now ? 'var(--accent-purple)' : 'var(--text-muted)', fontWeight: r.now ? 600 : 400 }}>{r.label}</span>
+              <div style={{ height: 8, borderRadius: 4, background: 'var(--bg-card-hover)', overflow: 'hidden' }}>
+                <div style={{ width: `${pRight(r.s) * 100}%`, height: '100%', background: r.now ? 'var(--accent-purple)' : 'var(--border-strong)' }} />
+              </div>
+              <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-main)' }}>{(pRight(r.s) * 100).toFixed(1)}%</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <p>
+          That's the probability the right caption gets. It's the same knob as the temperature slider on the text model's Train tab,
+          written the other way up: temperature divides the scores, this multiplies them, so scale = 1 / temperature. CLIP starts
+          at temperature 0.07 and lets training adjust it (capped at a scale of 100). When the dashed line climbs, the model is
+          sure enough of its matches to sharpen its own choices.
+        </p>
       </div>
     </div>
   );
