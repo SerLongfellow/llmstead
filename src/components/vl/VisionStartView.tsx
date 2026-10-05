@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, CircleSlash, FlaskConical, Images } from 'lucide-react';
+import { ArrowRight, BookA, CircleSlash, FlaskConical, Images } from 'lucide-react';
 import { THEME } from '../../styles/theme';
 import { VisionStage, VlmPipeline } from './VlmPipeline';
 
@@ -144,8 +144,19 @@ export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, on
     <div className="glass-panel" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
       <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>How it learns: two towers, one space</h3>
       <TwoTowers />
+      <div style={{ display: 'flex', gap: 10, padding: '10px 14px', borderRadius: 8, background: 'var(--surface-inset)', border: '1px solid var(--border-color)' }}>
+        <BookA size={16} color="var(--accent-purple)" style={{ flexShrink: 0, marginTop: 2 }} />
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+          <b style={{ color: 'var(--text-main)' }}>What's a "tower"?</b> One of the separate networks in a model that takes in more
+          than one kind of input. Each is its own stack of transformer layers, drawn tall in diagrams like a tower. CLIP has two: an{' '}
+          <b style={{ color: 'var(--text-main)' }}>image tower</b> that reads the picture's patches, and a{' '}
+          <b style={{ color: 'var(--text-main)' }}>text tower</b> that reads the caption's words. They share no weights and never
+          see each other's input; each ends in one vector, and the two vectors meet only at the top, where they're compared. (This
+          design is also called a two-tower model or dual encoder.)
+        </p>
+      </div>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        Neither tower ever sees the other's input. Each training step takes a batch of pictures with their captions and scores{' '}
+        Each training step takes a batch of pictures with their captions and scores{' '}
         <i>every</i> picture against <i>every</i> caption. The loss rewards the right pairs for scoring highest and every wrong
         pairing in the batch for scoring low. That's why it's called <b style={{ color: 'var(--text-main)' }}>contrastive</b>{' '}
         learning: a caption is learned as much from the pictures it doesn't describe as from the one it does.
