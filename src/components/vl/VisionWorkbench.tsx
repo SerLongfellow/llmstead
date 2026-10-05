@@ -6,7 +6,7 @@ import { MicroVlm } from '../../engine/vl/vlm';
 import { VlmDataSettings } from '../../engine/vl/vlmTraining';
 import { PretrainedManifest, fetchPretrainedClip } from '../../engine/vl/pretrained';
 import { GuideStrip } from '../GuideStrip';
-import { ModeSwitchProps, Navbar } from '../Navbar';
+import { IMAGE_TABS, ModeSwitchProps, Navbar } from '../Navbar';
 import { VisionInsideView } from './VisionInsideView';
 import { VisionNextView } from './VisionNextView';
 import { VisionSetupView } from './VisionSetupView';
@@ -188,7 +188,7 @@ export const VisionWorkbench: React.FC<VisionWorkbenchProps> = ({ mode, modeSwit
 
   return (
     <>
-      <Navbar activeTab={tab} setActiveTab={setTab} isTraining={isClip ? clipTraining : vlmTraining} modeSwitch={modeSwitch} />
+      <Navbar activeTab={tab} setActiveTab={setTab} isTraining={isClip ? clipTraining : vlmTraining} tabs={IMAGE_TABS} modeSwitch={modeSwitch} />
 
       {/* ── Images · CLIP ── */}
       <main style={{ minHeight: '80vh', display: isClip ? 'block' : 'none' }}>

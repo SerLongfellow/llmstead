@@ -2,8 +2,9 @@ import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense, laz
 import { SavedSession, SaveStatus, TrainingHistory, loadSession, saveSession, clearSession } from './persistence';
 import { DatasetOption, StepInspectionData, TransformerConfig } from './types';
 import { MicroTransformer } from './engine/transformer';
-import { BPETokenizer } from './engine/bpeTokenizer';
-import { SAMPLE_DATASETS, samplePromptFor } from './engine/datasets';
+import { SAMPLE_DATASETS, DOWNLOADABLE_DATASETS, BUILT_IN_DATASET_IDS, loadDatasetText, samplePromptFor } from './engine/datasets';
+import { ProfileShape, matchingProfile, shapeOf } from './engine/modelProfiles';
+import { BACKGROUND_TOKENIZE_CHARS, prepareTokenizer, tokenizerFor } from './engine/tokenizers';
 import { ExportModal } from './components/ExportModal';
 import { ModeSwitchProps, ModelMode, Navbar } from './components/Navbar';
 import { SetupView } from './components/SetupView';
@@ -12,6 +13,7 @@ import { PipelineView } from './components/PipelineView';
 import { StartView } from './components/StartView';
 import { GuideStrip } from './components/GuideStrip';
 import { WhatsNextView } from './components/WhatsNextView';
+import { PostTrainSession, PostTrainView } from './components/posttrain/PostTrainView';
 import { Github, History, X } from 'lucide-react';
 
 // Other places to learn how transformers work, linked from the footer
@@ -62,9 +64,23 @@ const loadMode = (): ModelMode => {
 /** Longest the first render waits for the web fonts before showing the app anyway */
 const FONT_WAIT_MS = 600;
 
+/**
+ * Datasets this big take seconds to tokenize, so changes that retokenize one show a notice while
+ * the tokenizer is prepared in the background (see Workbench's withNotice)
+ */
+const isBig = (ds: DatasetOption) => Math.max(ds.text.length, ds.download?.bytes ?? 0) >= BACKGROUND_TOKENIZE_CHARS;
+
+type Boot = {
+  saved: SavedSession | null;
+  datasets: DatasetOption[];
+  /** The saved dataset needs downloading and the download failed */
+  downloadFailed: boolean;
+};
+
 /** Reads the autosave (if any) once, then renders the app starting from it */
 export default function App() {
-  const [boot, setBoot] = useState<{ saved: SavedSession | null } | null>(null);
+  const [boot, setBoot] = useState<Boot | null>(null);
+  const [bootNote, setBootNote] = useState<string | null>(null);
   useEffect(() => {
     // Also start the web fonts loading now and wait for them (briefly), so the app doesn't first
     // render in a fallback font and then reflow when Inter arrives. Never wait more than FONT_WAIT_MS.
@@ -72,12 +88,28 @@ export default function App() {
       Promise.all(['400 1em Inter', '700 1em Inter', '400 1em "JetBrains Mono"'].map(f => document.fonts?.load(f))).catch(() => {}),
       new Promise(resolve => setTimeout(resolve, FONT_WAIT_MS)),
     ]);
-    Promise.all([loadSession(), fonts]).then(([saved]) => setBoot({ saved }));
+    Promise.all([loadSession(), fonts]).then(async ([saved]) => {
+      let datasets = [...SAMPLE_DATASETS, ...DOWNLOADABLE_DATASETS, ...(saved?.customDatasets ?? [])];
+      // A saved session on a downloadable dataset needs its text before anything can be rebuilt
+      const pick = datasets.find(d => d.id === saved?.selectedDatasetId);
+      let downloadFailed = false;
+      if (saved && pick && isBig(pick)) {
+        setBootNote(`Restoring your model: loading ${pick.name} and rebuilding its tokenizer…`);
+        try {
+          const loaded = await loadDatasetText(pick);
+          datasets = datasets.map(d => (d === pick ? loaded : d));
+          await prepareTokenizer(loaded.text, saved.config.vocabSize);
+        } catch {
+          downloadFailed = true;
+        }
+      }
+      setBoot({ saved, datasets, downloadFailed });
+    });
   }, []);
   // Loading takes a few milliseconds; show just the page background (set in index.html) rather
   // than flash the defaults, then the app fades in (.app-shell)
-  if (!boot) return null;
-  return <Site saved={boot.saved} />;
+  if (!boot) return bootNote ? <BusyNotice text={bootNote} /> : null;
+  return <Site saved={boot.saved} initialDatasets={boot.datasets} downloadFailed={boot.downloadFailed} />;
 }
 
 /**
@@ -86,7 +118,7 @@ export default function App() {
  * training or loses a chart. The two image models share one workbench (the VLM borrows the CLIP's
  * image tower), built the first time either is opened.
  */
-function Site({ saved }: { saved: SavedSession | null }) {
+function Site({ saved, initialDatasets, downloadFailed }: { saved: SavedSession | null; initialDatasets: DatasetOption[]; downloadFailed: boolean }) {
   const [mode, setModeState] = useState<ModelMode>(loadMode);
   const [visionOpened, setVisionOpened] = useState(mode !== 'gpt');
   const [training, setTraining] = useState<Record<ModelMode, boolean>>({ gpt: false, clip: false, vlm: false });
@@ -107,7 +139,14 @@ function Site({ saved }: { saved: SavedSession | null }) {
   return (
     <div className="app-shell" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 20px 40px 20px' }}>
       <div style={{ display: mode === 'gpt' ? 'block' : 'none' }}>
-        <Workbench saved={saved} active={mode === 'gpt'} modeSwitch={modeSwitch} onTrainingChange={onGptTraining} />
+        <Workbench
+          saved={saved}
+          initialDatasets={initialDatasets}
+          downloadFailed={downloadFailed}
+          active={mode === 'gpt'}
+          modeSwitch={modeSwitch}
+          onTrainingChange={onGptTraining}
+        />
       </div>
       {visionOpened && (
         <div style={{ display: mode !== 'gpt' ? 'block' : 'none' }}>
@@ -142,35 +181,58 @@ function Site({ saved }: { saved: SavedSession | null }) {
   );
 }
 
+/** Shown while a big dataset downloads or its tokenizer is built */
+const BusyNotice: React.FC<{ text: string }> = ({ text }) => (
+  <div
+    role="status"
+    style={{
+      position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, maxWidth: 'calc(100% - 32px)',
+      padding: '10px 18px', borderRadius: 10, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)',
+      background: 'var(--surface-inset)', border: '1px solid var(--primary)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+    }}
+  >
+    {text}
+  </div>
+);
 
-type RestoreNote = { kind: 'restored'; step: number; savedAt: number } | { kind: 'discarded'; reason: 'vocabulary' | 'architecture' };
+
+type RestoreNote =
+  | { kind: 'restored'; step: number; savedAt: number }
+  | { kind: 'discarded'; reason: 'vocabulary' | 'architecture' }
+  | { kind: 'download-failed'; datasetName: string };
 
 interface WorkbenchProps {
   saved: SavedSession | null;
+  initialDatasets: DatasetOption[];
+  downloadFailed: boolean;
   active: boolean; // whether the GPT side is the one showing
   modeSwitch: ModeSwitchProps;
   onTrainingChange: (training: boolean) => void;
 }
 
-/** The text-model side of the site: a tiny GPT you can set up, train and look inside */
-function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchProps) {
-  // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches)
-  const [datasets, setDatasets] = useState<DatasetOption[]>(() => [...SAMPLE_DATASETS, ...(saved?.customDatasets ?? [])]);
+/** The text-model side of the site: a tiny GPT you can set up, train, look inside and post-train */
+function Workbench({ saved, initialDatasets, downloadFailed, active, modeSwitch, onTrainingChange }: WorkbenchProps) {
+  // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches).
+  // Downloadable datasets have empty text until they're picked.
+  const [datasets, setDatasets] = useState<DatasetOption[]>(initialDatasets);
   const [selectedDataset, setSelectedDataset] = useState<DatasetOption>(
-    () => datasets.find(d => d.id === saved?.selectedDatasetId) ?? SAMPLE_DATASETS[0]
+    () => datasets.find(d => d.id === saved?.selectedDatasetId && !downloadFailed) ?? SAMPLE_DATASETS[0]
   );
 
   // Transformer Hyperparameters
   const [config, setConfig] = useState<TransformerConfig>(() => saved?.config ?? DEFAULT_CONFIG);
+  // The most recent settings that matched no profile, so Setup's Custom card can bring them back
+  // after trying a profile
+  const [lastCustomShape, setLastCustomShape] = useState<ProfileShape | null>(null);
+  useEffect(() => {
+    if (!matchingProfile(config)) setLastCustomShape(shapeOf(config));
+  }, [config]);
 
   // BPE Tokenizer Engine instance, trained on the selected dataset. config.vocabSize is the
   // *target* vocab size (set in Setup). Rebuilt (never mutated) when either changes, and
   // since the model's embedding table depends on the vocabulary, that also means a new model.
-  const tokenizer = useMemo(() => {
-    const t = new BPETokenizer();
-    t.train(selectedDataset.text, config.vocabSize);
-    return t;
-  }, [selectedDataset, config.vocabSize]);
+  // (A big dataset's tokenizer was already prepared in the background: see withNotice.)
+  const tokenizer = useMemo(() => tokenizerFor(selectedDataset.text, config.vocabSize), [selectedDataset, config.vocabSize]);
 
   const tokenizerState = useMemo(() => tokenizer.getState(selectedDataset.text), [tokenizer, selectedDataset]);
 
@@ -186,6 +248,7 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
   const restoredModel = useRef<MicroTransformer | null>(null);
   const [restoreNote, setRestoreNote] = useState<RestoreNote | null>(() => {
     if (!saved) return null;
+    if (downloadFailed) return { kind: 'download-failed', datasetName: datasets.find(d => d.id === saved.selectedDatasetId)?.name ?? 'the dataset' };
     if (saved.outdatedModel) return saved.history.stepCount > 0 ? { kind: 'discarded', reason: 'architecture' } : null;
     const vocabulary = Array.from({ length: actualVocab }, (_, id) => tokenizer.decode([id]));
     const sameVocab = vocabulary.length === saved.vocabulary.length && vocabulary.every((t, i) => t === saved.vocabulary[i]);
@@ -244,10 +307,44 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
     runInspection();
   }, [testSentence, model, tokenizer]);
 
-  const handleSelectDataset = (ds: DatasetOption) => {
-    setSelectedDataset(ds);
-    setTestSentence(samplePromptFor(ds));
+  // A big dataset's tokenizer takes seconds to train. Before a change that needs a new one,
+  // withNotice puts up a notice, trains it in the background, and only then makes the change
+  // (the notice clears once the change has rendered).
+  const [busyNote, setBusyNote] = useState<string | null>(null);
+  const withNotice = async (text: string, vocabSize: number, note: string, change: () => void) => {
+    if (text.length < BACKGROUND_TOKENIZE_CHARS) return change();
+    setBusyNote(note);
+    await prepareTokenizer(text, vocabSize);
+    change();
+    setTimeout(() => setBusyNote(null), 0);
   };
+  const [datasetError, setDatasetError] = useState<string | null>(null);
+
+  const handleSelectDataset = async (picked: DatasetOption) => {
+    setDatasetError(null);
+    let ds = picked;
+    if (picked.download && !picked.text) {
+      setBusyNote(`Downloading ${picked.name} (${(picked.download.bytes / 1e6).toFixed(1)} MB)…`);
+      try {
+        ds = await loadDatasetText(picked);
+      } catch {
+        setBusyNote(null);
+        setDatasetError(`Couldn't download ${picked.name}. Check your connection and try again.`);
+        return;
+      }
+      setDatasets(prev => prev.map(d => (d.id === ds.id ? ds : d)));
+    }
+    withNotice(ds.text, config.vocabSize, `Building a tokenizer from ${ds.name}…`, () => {
+      setSelectedDataset(ds);
+      setTestSentence(samplePromptFor(ds));
+    });
+  };
+
+  const retokenizeNote = `Rebuilding the tokenizer from ${selectedDataset.name}…`;
+  const handleChangeVocabSize = (vocabSize: number) =>
+    withNotice(selectedDataset.text, vocabSize, retokenizeNote, () => setConfig(prev => ({ ...prev, vocabSize })));
+  const handleApplyProfile = (shape: ProfileShape) =>
+    withNotice(selectedDataset.text, shape.vocabSize, retokenizeNote, () => setConfig(prev => ({ ...prev, ...shape })));
 
   const handleAddDataset = (ds: DatasetOption) => {
     setDatasets(prev => [...prev, ds]);
@@ -274,11 +371,31 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
   };
 
   const [isTraining, setIsTraining] = useState<boolean>(false);
+  const [isPostTraining, setIsPostTraining] = useState<boolean>(false);
+  // Either kind of training puts a pulsing dot on the Text · GPT mode button while another mode shows
   useEffect(() => {
-    onTrainingChange(isTraining);
+    onTrainingChange(isTraining || isPostTraining);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTraining]);
+  }, [isTraining, isPostTraining]);
   const [exportOpen, setExportOpen] = useState(false);
+
+  // ── Post-training ─────────────────────────────────────────────────────────
+  // Starting post-training freezes a copy of the pre-trained weights: the "before" for every
+  // comparison, DPO's and RL's reference, and what Restore puts back. A new model ends it.
+  const [postTrain, setPostTrain] = useState<PostTrainSession | null>(null);
+  useEffect(() => setPostTrain(null), [model]);
+  const beginPostTrain = useCallback((): PostTrainSession => {
+    const base = model.exportState();
+    const reference = new MicroTransformer(model.config);
+    reference.importState(base);
+    const session = { base, reference };
+    setPostTrain(session);
+    return session;
+  }, [model]);
+  const restorePreTrained = () => {
+    if (postTrain) model.importState(postTrain.base);
+    setPostTrain(null);
+  };
   const closeExport = useCallback(() => setExportOpen(false), []);
 
   // ── Autosave ──────────────────────────────────────────────────────────────
@@ -288,9 +405,11 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
   const history = useRef<TrainingHistory>(initialHistory ?? { stepCount: 0, lossHistory: [], valLossHistory: [], stepLabels: [] });
   const dirty = useRef(false);
-  const savingOff = useRef(false);
-  const latest = useRef({ config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab });
-  latest.current = { config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab };
+  // Off if the saved dataset couldn't be downloaded: saving now would overwrite that model with
+  // this fallback one, so leave the save alone for a reload to retry
+  const savingOff = useRef(downloadFailed);
+  const latest = useRef({ config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab, postTrain });
+  latest.current = { config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab, postTrain };
 
   const saveNow = () => {
     if (!dirty.current || savingOff.current) return;
@@ -300,10 +419,12 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
     saveSession({
       config: s.config,
       selectedDatasetId: s.selectedDataset.id,
-      customDatasets: s.datasets.filter(d => !SAMPLE_DATASETS.includes(d)),
+      customDatasets: s.datasets.filter(d => !BUILT_IN_DATASET_IDS.has(d.id)),
       vocabulary: Array.from({ length: s.actualVocab }, (_, id) => s.tokenizer.decode([id])),
       testSentence: s.testSentence,
-      model: s.model.exportState(),
+      // While post-training, save the pre-trained weights: post-training isn't saved, so a reload
+      // comes back to the model it started from
+      model: s.postTrain ? s.postTrain.base : s.model.exportState(),
       history: history.current,
     }).then(ok => setSaveStatus(ok ? { kind: 'saved', at: Date.now() } : { kind: 'unavailable' }));
   };
@@ -314,7 +435,7 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
   };
   useEffect(() => {
     dirty.current = true;
-  }, [config, datasets, selectedDataset, testSentence, model]);
+  }, [config, datasets, selectedDataset, testSentence, model, postTrain]);
   useEffect(() => {
     if (!isTraining) saveNow();
   }, [isTraining]);
@@ -342,6 +463,7 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTraining={isTraining}
+        isPostTraining={isPostTraining}
         modeSwitch={modeSwitch}
         onExport={() => setExportOpen(true)}
       />
@@ -354,6 +476,8 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
         stepCount={history.current.stepCount}
         trainingBusy={isTraining}
       />
+
+      {busyNote && <BusyNotice text={busyNote} />}
 
       <main style={{ minHeight: '80vh' }}>
         {restoreNote && (
@@ -369,6 +493,11 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
                 <>
                   <b style={{ color: 'var(--text-main)' }}>Welcome back.</b> Your model was restored from step #{restoreNote.step.toLocaleString()}
                   {' '}(saved in this browser {new Date(restoreNote.savedAt).toLocaleString()}).
+                </>
+              ) : restoreNote.kind === 'download-failed' ? (
+                <>
+                  Your saved model was trained on {restoreNote.datasetName}, which couldn't be downloaded just now, so you're on the
+                  default dataset. Autosave is off until you reload, so your saved model isn't overwritten. Reload to try again.
                 </>
               ) : restoreNote.reason === 'architecture' ? (
                 <>
@@ -415,9 +544,12 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
               selectedDataset={selectedDataset}
               onSelectDataset={handleSelectDataset}
               onAddDataset={handleAddDataset}
+              datasetError={datasetError}
               tokenizer={tokenizer}
               targetVocabSize={config.vocabSize}
-              onChangeVocabSize={(vocabSize) => setConfig(prev => ({ ...prev, vocabSize }))}
+              onChangeVocabSize={handleChangeVocabSize}
+              onApplyProfile={handleApplyProfile}
+              lastCustomShape={lastCustomShape}
               config={effectiveConfig}
               // Setup sees the effective vocab; the target vocab only changes via its own slider
               onChangeConfig={(next) => setConfig({ ...next, vocabSize: config.vocabSize })}
@@ -448,13 +580,17 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
             initialHistory={initialHistory}
             onHistoryChange={onHistoryChange}
             saveStatus={saveStatus}
+            postTrained={postTrain !== null}
+            onRestoreBase={restorePreTrained}
+            onKeepPostTrained={() => setPostTrain(null)}
+            onNavigateToPostTrain={() => setActiveTab('posttrain')}
           />
         </div>
 
         {activeTab === 'pipeline' && (
           <>
             {!guidesHidden && (
-              <GuideStrip step={3} title="Look inside" next={{ label: "Next: What's next", onClick: () => setActiveTab('next') }} onHide={() => setGuides(true)}>
+              <GuideStrip step={3} title="Look inside" next={{ label: 'Next: Post-train', onClick: () => setActiveTab('posttrain') }} onHide={() => setGuides(true)}>
                 Type a prompt, click a stage to see what happens to it there, and click a token to follow it through the model.
                 Compare the same prompt before and after more training.
               </GuideStrip>
@@ -472,7 +608,30 @@ function Workbench({ saved, active, modeSwitch, onTrainingChange }: WorkbenchPro
           </>
         )}
 
-        {activeTab === 'next' && <WhatsNextView onNavigate={setActiveTab} />}
+        {/* Kept mounted like Train, so post-training keeps running while you look elsewhere */}
+        <div style={{ display: activeTab === 'posttrain' ? 'block' : 'none' }}>
+          {!guidesHidden && (
+            <GuideStrip step={4} title="Post-train it" next={{ label: "Next: What's next", onClick: () => setActiveTab('next') }} onHide={() => setGuides(true)}>
+              Pre-training taught the model to continue text. Pick a method, look at its starter data, and press Start: then
+              compare the model before and after, and watch what it costs. Restore brings the pre-trained model back.
+            </GuideStrip>
+          )}
+          <PostTrainView
+            model={model}
+            tokenizer={tokenizer}
+            config={effectiveConfig}
+            selectedDataset={selectedDataset}
+            session={postTrain}
+            onBeginSession={beginPostTrain}
+            onRestoreBase={restorePreTrained}
+            pretrainBusy={isTraining}
+            visible={active && activeTab === 'posttrain'}
+            onRunningChange={setIsPostTraining}
+            onNavigateToTrain={() => setActiveTab('training')}
+          />
+        </div>
+
+        {activeTab === 'next' && <WhatsNextView onNavigate={setActiveTab} onExport={() => setExportOpen(true)} />}
       </main>
     </>
   );

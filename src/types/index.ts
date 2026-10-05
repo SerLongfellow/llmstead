@@ -72,4 +72,10 @@ export interface DatasetOption {
   category: 'literature' | 'code' | 'synthetic' | 'logic';
   /** A good example prompt: used as the default Pipeline input and generation seed */
   samplePrompt?: string;
+  /** Too big to bundle with the site: `text` stays '' until it's downloaded from here (see loadDatasetText) */
+  download?: { url: string; bytes: number };
+  /** Where the text comes from, for datasets that aren't ours */
+  source?: { label: string; url: string; license: string; licenseUrl: string };
+  /** Id of the model profile that suits this dataset (see modelProfiles.ts) */
+  suggestedProfile?: string;
 }

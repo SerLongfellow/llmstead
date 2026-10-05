@@ -905,6 +905,44 @@ Assistant: Goodbye! Have a great day.`),
   }
 ];
 
+/**
+ * Datasets too big to bundle with the site. Their text is a separate file in public/datasets/,
+ * downloaded only when someone picks one.
+ */
+export const DOWNLOADABLE_DATASETS: DatasetOption[] = [
+  {
+    id: 'tinystories',
+    name: 'TinyStories',
+    samplePrompt: 'Once upon a time',
+    category: 'literature',
+    description:
+      '2,450 short stories in simple English, written by GPT-4 for training small models. About 100× more text than the others; pair it with the Storyteller profile.',
+    text: '',
+    // The first 2,450 stories of TinyStoriesV2-GPT4-train.txt; curly quotes and dashes made plain ASCII
+    download: { url: '/datasets/tinystories.txt', bytes: 1_999_485 },
+    source: {
+      label: 'TinyStories (Eldan & Li, 2023)',
+      url: 'https://huggingface.co/datasets/roneneldan/TinyStories',
+      license: 'CDLA-Sharing-1.0',
+      licenseUrl: 'https://cdla.dev/sharing-1-0/',
+    },
+    suggestedProfile: 'storyteller',
+  },
+];
+
+/** Every dataset that ships with the site (custom text added in Setup is the rest) */
+export const BUILT_IN_DATASET_IDS = new Set([...SAMPLE_DATASETS, ...DOWNLOADABLE_DATASETS].map(d => d.id));
+
+/** The dataset with its text: downloads it if it hasn't been yet. Rejects if the download fails. */
+export async function loadDatasetText(ds: DatasetOption): Promise<DatasetOption> {
+  if (!ds.download || ds.text) return ds;
+  const res = await fetch(ds.download.url);
+  const text = await res.text();
+  // The host answers unknown paths with the app's own page (and a 200), so check it's really the text
+  if (!res.ok || text.trimStart().startsWith('<')) throw new Error(`Couldn't download ${ds.name}`);
+  return { ...ds, text };
+}
+
 /** A dataset's example prompt; custom datasets fall back to the start of their first line */
 export const samplePromptFor = (ds: DatasetOption) => ds.samplePrompt ?? ds.text.split('\n')[0].slice(0, 30);
 

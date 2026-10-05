@@ -9,6 +9,20 @@ export interface GenerateOptions {
   stopAfterChars?: number;
   /** Token healing (see generateContinuation). On unless set to false. */
   tokenHealing?: boolean;
+  /** Stop when the model emits this token id (post-training teaches it to end replies with <EOS>) */
+  stopToken?: number;
+}
+
+/** What generateTokens produced, as token ids (what RL trains on) as well as text */
+export interface GeneratedSequence {
+  /** The prompt's tokens (minus the healed one) followed by every generated token */
+  tokens: number[];
+  /** Index of the first generated token (the one that re-writes the healed prompt text, if any) */
+  responseStart: number;
+  /** The newly generated text (the healed prompt text is not repeated) */
+  text: string;
+  /** Whether generation ended on stopToken */
+  stopped: boolean;
 }
 
 /** Pick the next token id from a probability distribution */
@@ -46,6 +60,16 @@ export function generateContinuation(
   prompt: string,
   opts: GenerateOptions
 ): string {
+  return generateTokens(model, tokenizer, prompt, opts).text;
+}
+
+/** generateContinuation, also returning the exact token ids (see GeneratedSequence) */
+export function generateTokens(
+  model: MicroTransformer,
+  tokenizer: BPETokenizer,
+  prompt: string,
+  opts: GenerateOptions
+): GeneratedSequence {
   const tokens = [...tokenizer.encode(prompt).tokens];
   // The backed-up text, and how much of it the model still has to reproduce
   let healed = '';
@@ -56,6 +80,8 @@ export function generateContinuation(
   }
   let pending = healed;
   let out = '';
+  const responseStart = tokens.length;
+  let stopped = false;
 
   for (let step = 0; step < opts.maxTokens; step++) {
     const window = tokens.slice(-model.config.contextWindow);
@@ -76,8 +102,12 @@ export function generateContinuation(
     tokens.push(next);
     const text = tokenizer.decode([next]);
     out += text;
+    if (next === opts.stopToken) {
+      stopped = true;
+      break;
+    }
     pending = pending.startsWith(text) ? pending.slice(text.length) : '';
     if (opts.stopAfterChars !== undefined && out.length - healed.length >= opts.stopAfterChars) break;
   }
-  return out.slice(healed.length);
+  return { tokens, responseStart, text: out.slice(healed.length), stopped };
 }

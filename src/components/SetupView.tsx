@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DatasetOption, TransformerConfig } from '../types';
 import { BPETokenizer } from '../engine/bpeTokenizer';
-import { BookOpen, Binary, Sliders, Info, Plus, ChevronRight, Ruler, RotateCcw } from 'lucide-react';
+import { VALIDATION_FRACTION } from '../engine/datasets';
+import { MODEL_PROFILES, ProfileShape, matchingProfile } from '../engine/modelProfiles';
+import { FromSpeedWorker, ToSpeedWorker } from '../engine/speedWorker';
+import { BookOpen, Binary, Sliders, Info, Plus, ChevronRight, Ruler, RotateCcw, Download, Gauge, LayoutGrid } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
+import { GoDeeper } from './GoDeeper';
 import { ScaleComparison } from './ScaleComparison';
 import { referenceHint, FRONTIER_NOTE } from '../engine/referenceModels';
 
@@ -12,6 +16,8 @@ interface SetupViewProps {
   selectedDataset: DatasetOption;
   onSelectDataset: (ds: DatasetOption) => void;
   onAddDataset: (ds: DatasetOption) => void;
+  /** Set when a dataset download failed */
+  datasetError: string | null;
   // 2. Tokenizer
   tokenizer: BPETokenizer;
   targetVocabSize: number;
@@ -19,7 +25,58 @@ interface SetupViewProps {
   // 3. Architecture
   config: TransformerConfig; // vocabSize here is the tokenizer's actual vocab
   onChangeConfig: (newConfig: TransformerConfig) => void;
+  /** Sets the vocabulary and architecture together (one rebuild) */
+  onApplyProfile: (shape: ProfileShape) => void;
+  /** The last settings that matched no profile (what the Custom card restores), if any */
+  lastCustomShape: ProfileShape | null;
   paramCount: number;
+}
+
+/** The text preview shows at most this much (a big dataset would make the page sluggish) */
+const PREVIEW_CHARS = 20_000;
+/** Chinchilla's rule of thumb: compute-optimal training sees ~20 tokens per parameter */
+const TOKENS_PER_PARAM = 20;
+/** Below this many parameters, a dataset's suggested (bigger) profile is pointed out */
+const SMALL_FOR_STORIES = 300_000;
+/** Weights, gradients and AdamW's two moment estimates, as 8-byte numbers */
+const BYTES_PER_PARAM = 4 * 8;
+
+/** "40 s", "12 min", "3.5 h", "2 days" */
+function formatDuration(seconds: number): string {
+  if (seconds < 90) return `${Math.max(1, Math.round(seconds))} s`;
+  if (seconds < 90 * 60) return `${Math.round(seconds / 60)} min`;
+  if (seconds < 48 * 3600) return `${(seconds / 3600).toFixed(seconds < 10 * 3600 ? 1 : 0)} h`;
+  return `${Math.round(seconds / 86400)} days`;
+}
+
+/**
+ * Times one training step for this model shape in a background thread (engine/speedWorker.ts).
+ * Returns ms per step, or null while measuring (or if this browser can't start the worker).
+ */
+function useMeasuredStepMs(config: TransformerConfig): number | null {
+  const worker = useRef<Worker | null>(null);
+  const requestId = useRef(0);
+  const [result, setResult] = useState<{ id: number; ms: number } | null>(null);
+  useEffect(() => {
+    try {
+      worker.current = new Worker(new URL('../engine/speedWorker.ts', import.meta.url), { type: 'module' });
+      worker.current.onmessage = (e: MessageEvent<FromSpeedWorker>) => setResult({ id: e.data.id, ms: e.data.msPerStep });
+    } catch {
+      worker.current = null;
+    }
+    return () => worker.current?.terminate();
+  }, []);
+  const { vocabSize, contextWindow, dModel, numHeads, numLayers, mlpRatio, learningRate, optimizer } = config;
+  useEffect(() => {
+    const id = ++requestId.current;
+    // Wait for the sliders to settle before measuring
+    const timer = window.setTimeout(() => {
+      const message: ToSpeedWorker = { id, config: { vocabSize, contextWindow, dModel, numHeads, numLayers, mlpRatio, learningRate, optimizer } };
+      worker.current?.postMessage(message);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [vocabSize, contextWindow, dModel, numHeads, numLayers, mlpRatio, learningRate, optimizer]);
+  return result && result.id === requestId.current ? result.ms : null;
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
@@ -28,9 +85,10 @@ const Section: React.FC<{
   step: number;
   icon: React.ReactNode;
   title: string;
+  id?: string;
   children: React.ReactNode;
-}> = ({ step, icon, title, children }) => (
-  <div className="glass-panel" style={{ padding: '24px' }}>
+}> = ({ step, icon, title, id, children }) => (
+  <div id={id} className="glass-panel" style={{ padding: '24px', scrollMarginTop: 16 }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
       <span
         className="font-mono"
@@ -87,6 +145,97 @@ const BreakdownRow: React.FC<{ label: string; value: number }> = ({ label, value
   </div>
 );
 
+/** One card in the Model profile picker (a preset, or Custom) */
+const ProfileCard: React.FC<{ name: string; tagline: string; shape: ProfileShape | null; current: boolean; onClick: () => void }> = ({
+  name,
+  tagline,
+  shape,
+  current,
+  onClick,
+}) => (
+  <button
+    onClick={() => !current && onClick()}
+    aria-pressed={current}
+    style={{
+      textAlign: 'left', padding: 12, borderRadius: 10, cursor: current ? 'default' : 'pointer', font: 'inherit', color: 'inherit',
+      border: '1px solid ' + (current ? 'var(--primary)' : 'var(--border-color)'),
+      background: current ? 'var(--primary-soft)' : 'var(--surface-inset)',
+    }}
+  >
+    <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 2 }}>{name}</div>
+    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{tagline}</div>
+    {shape && (
+      <div className="font-mono" style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: 6 }}>
+        d{shape.dModel} · {shape.numLayers} {shape.numLayers === 1 ? 'block' : 'blocks'} · ctx {shape.contextWindow} · V {shape.vocabSize}
+      </div>
+    )}
+  </button>
+);
+
+const FitRow: React.FC<{ label: string; value: string; hint?: string }> = ({ label, value, hint }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 12px', background: 'var(--surface-inset)', borderRadius: 6 }}>
+    <span style={{ color: 'var(--text-muted)' }}>
+      {label}
+      {hint && <span style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-dim)' }}>{hint}</span>}
+    </span>
+    <span className="font-mono" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{value}</span>
+  </div>
+);
+
+/**
+ * Collapsible explainer on spending parameters on width (d_model) or depth (layers). The numbers
+ * quoted are from the runs described in modelProfiles.ts.
+ */
+const WidthVsDepth: React.FC<{ dModel: number; numLayers: number }> = ({ dModel, numLayers }) => {
+  const para = { fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 10px' };
+  const strong = { color: 'var(--text-main)' };
+  return (
+    <details>
+      <summary style={{ cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <ChevronRight size={14} /> Width or depth? How the shape changes what a model learns
+      </summary>
+      <div style={{ marginTop: 12, padding: 16, background: 'var(--surface-inset)', border: '1px solid var(--border-color)', borderRadius: 10 }}>
+        <p style={para}>
+          Think of each token's vector as a scratchpad that flows up through the blocks: every block reads it, works something out,
+          and adds its result back.
+        </p>
+        <p style={para}>
+          <b style={strong}>Width (d_model) is the size of the scratchpad.</b> A wider vector holds more facts about a token at
+          once (which word it is, where it sits, whether it's inside a quote), and since the MLP is a few times wider still, it also
+          sets how many patterns the model can memorize, like "after <i>once upon a</i> comes <i>time</i>".
+        </p>
+        <p style={para}>
+          <b style={strong}>Depth (layers) is the number of rounds.</b> A later block can build on what an earlier one found. The
+          classic example needs two blocks: the first marks every token with the token before it, and the second uses that to
+          find where the current word appeared earlier and copy what followed. That's how a model repeats a name from earlier in
+          the context. With one block, attention can only look things up directly, so a shallow model behaves like a very good
+          phrase predictor: fluent locally, weak at keeping track of anything across the context.
+        </p>
+        <p style={para}>
+          <b style={strong}>Which wins depends on the data and on training time.</b> On these small datasets most of what there is to
+          learn is local word patterns, which width captures directly. In our runs (4,000 steps), Wide &amp; shallow beat Deep &amp;
+          narrow on Shakespeare and Q&amp;A and tied on math, where Deep was still improving when we stopped. Depth pays off when the
+          text rewards multi-step patterns and there's enough training to learn them.
+        </p>
+        <p style={para}>
+          <b style={strong}>In practice:</b> blocks run one after another while width splits into parallel work, so deep models
+          take longer per token. At a fixed size, the exact shape matters much less than the total number of parameters, as long as
+          it isn't extreme. Real models sit around 64–128 of d_model per block (GPT-2 small: 768 over 12 blocks; Llama 3 8B: 4,096
+          over 32). Yours: {dModel} over {numLayers} {numLayers === 1 ? 'block' : 'blocks'}, {Math.round(dModel / numLayers)} per
+          block. Shallow models are also easier to read in Look inside: each attention pattern feeds the prediction directly.
+        </p>
+        <GoDeeper
+          links={[
+            { label: 'A Mathematical Framework for Transformer Circuits (Anthropic, 2021)', url: 'https://transformer-circuits.pub/2021/framework/index.html' },
+            { label: 'Induction heads (Anthropic, 2022)', url: 'https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html' },
+            { label: 'Scaling Laws for Neural Language Models (Kaplan et al., 2020)', url: 'https://arxiv.org/abs/2001.08361' },
+          ]}
+        />
+      </div>
+    </details>
+  );
+};
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export const SetupView: React.FC<SetupViewProps> = ({
@@ -94,11 +243,14 @@ export const SetupView: React.FC<SetupViewProps> = ({
   selectedDataset,
   onSelectDataset,
   onAddDataset,
+  datasetError,
   tokenizer,
   targetVocabSize,
   onChangeVocabSize,
   config,
   onChangeConfig,
+  onApplyProfile,
+  lastCustomShape,
   paramCount,
 }) => {
   // Custom dataset form
@@ -159,6 +311,18 @@ export const SetupView: React.FC<SetupViewProps> = ({
   const dMlp = config.dModel * config.mlpRatio;
   const headDim = config.dModel / config.numHeads;
 
+  // Profiles compare against the *target* vocab (what the profile sets), not what BPE reached
+  const activeProfile = matchingProfile({ ...config, vocabSize: targetVocabSize });
+  const suggestedProfile = MODEL_PROFILES.find(p => p.id === selectedDataset.suggestedProfile);
+
+  // Fit check: how long training takes on this device
+  const msPerStep = useMeasuredStepMs(config);
+  const trainTokens = Math.round(tokenCount * (1 - VALIDATION_FRACTION));
+  const tokensPerSecond = msPerStep ? (1000 / msPerStep) * config.contextWindow : null;
+  const onePass = tokensPerSecond ? trainTokens / tokensPerSecond : null;
+  const optimalBudget = tokensPerSecond ? (TOKENS_PER_PARAM * paramCount) / tokensPerSecond : null;
+  const memoryMb = (paramCount * BYTES_PER_PARAM) / 1e6;
+
   const tokenEmbedParams = config.vocabSize * config.dModel;
   const posEmbedParams = config.contextWindow * config.dModel;
   const qkvParams = 3 * config.dModel * config.dModel * config.numLayers;
@@ -178,6 +342,52 @@ export const SetupView: React.FC<SetupViewProps> = ({
               New data, vocabulary or shape means fresh weights, so training starts over.
             </p>
           </div>
+        </div>
+
+        {/* Shortcut: set the vocabulary and architecture (steps 2 and 3) in one go */}
+        <div className="glass-panel" style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <LayoutGrid size={20} color="var(--accent-cyan)" />
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Model profile</h2>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 14 }}>
+            Ready-made settings for steps 2 and 3. Pick one, then fine-tune the sliders below if you like: any change makes it
+            Custom.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            {MODEL_PROFILES.map(p => (
+              <ProfileCard
+                key={p.id}
+                name={p.name}
+                tagline={p.tagline}
+                shape={p.shape}
+                current={activeProfile?.id === p.id}
+                onClick={() => onApplyProfile(p.shape)}
+              />
+            ))}
+            {/* Selected whenever the settings match no profile; from a profile, it brings the last custom settings back */}
+            <ProfileCard
+              name="Custom"
+              tagline={activeProfile ? (lastCustomShape ? 'Back to your own settings.' : 'Move any slider below.') : 'Your own settings.'}
+              shape={activeProfile ? lastCustomShape : { ...config, vocabSize: targetVocabSize }}
+              current={!activeProfile}
+              onClick={() =>
+                lastCustomShape ? onApplyProfile(lastCustomShape) : document.getElementById('setup-tokenizer')?.scrollIntoView({ behavior: 'smooth' })
+              }
+            />
+          </div>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
+            {activeProfile ? (
+              <>
+                <b style={{ color: 'var(--text-main)' }}>{activeProfile.name}:</b> {activeProfile.description}
+              </>
+            ) : (
+              <>
+                <b style={{ color: 'var(--text-main)' }}>Custom:</b> your own mix of settings, which no profile matches. Pick a profile
+                to go back to a preset; the Custom card remembers these settings, so you can come back to them.
+              </>
+            )}
+          </p>
         </div>
         {/* 1. Data */}
         <Section step={1} icon={<BookOpen size={20} color="var(--accent-purple)" />} title="Data">
@@ -230,10 +440,43 @@ export const SetupView: React.FC<SetupViewProps> = ({
                     <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>{ds.category}</span>
                   </div>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ds.description}</p>
+                  {ds.download && (
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Download size={12} /> {(ds.download.bytes / 1e6).toFixed(1)} MB{ds.text ? ', downloaded' : ' download'}
+                    </p>
+                  )}
                 </div>
               );
             })}
           </div>
+
+          {datasetError && <p style={{ fontSize: '0.85rem', color: 'var(--accent-rose)' }}>{datasetError}</p>}
+
+          {selectedDataset.source && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+              Source:{' '}
+              <a href={selectedDataset.source.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-muted)' }}>
+                {selectedDataset.source.label}
+              </a>
+              , shared under the{' '}
+              <a href={selectedDataset.source.licenseUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-muted)' }}>
+                {selectedDataset.source.license}
+              </a>{' '}
+              license.
+            </p>
+          )}
+
+          {suggestedProfile && activeProfile?.id !== suggestedProfile.id && paramCount < SMALL_FOR_STORIES && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, background: 'var(--surface-inset)', border: '1px solid var(--accent-amber)' }}>
+              <span style={{ flex: 1, minWidth: 200, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                {selectedDataset.name} is meant for the <b style={{ color: 'var(--text-main)' }}>{suggestedProfile.name}</b> profile. This model
+                will pick up common words, but it's too small to string sentences together.
+              </span>
+              <button className="btn-secondary" onClick={() => onApplyProfile(suggestedProfile.shape)} style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
+                Use {suggestedProfile.name}
+              </button>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Stat label="Characters" value={charCount.toLocaleString()} color="var(--accent-cyan)" />
@@ -261,13 +504,18 @@ export const SetupView: React.FC<SetupViewProps> = ({
                 lineHeight: 1.5,
               }}
             >
-              {text}
+              {text.length > PREVIEW_CHARS ? text.slice(0, PREVIEW_CHARS) + '\n…' : text}
             </pre>
+            {text.length > PREVIEW_CHARS && (
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 6 }}>
+                Showing the first {PREVIEW_CHARS.toLocaleString()} of {charCount.toLocaleString()} characters.
+              </p>
+            )}
           </details>
         </Section>
 
         {/* 2. Tokenizer */}
-        <Section step={2} icon={<Binary size={20} color="var(--accent-rose)" />} title="Tokenizer">
+        <Section step={2} id="setup-tokenizer" icon={<Binary size={20} color="var(--accent-rose)" />} title="Tokenizer">
           <SliderRow
             label="Vocabulary Size (V)"
             reference={referenceHint('vocabSize')}
@@ -279,7 +527,7 @@ export const SetupView: React.FC<SetupViewProps> = ({
             valueLabel={vocabDraft !== targetVocabSize ? <>{vocabDraft}…</> : <>{config.vocabSize}{config.vocabSize < targetVocabSize ? ` / ${targetVocabSize} target` : ''}</>}
             color="var(--accent-rose)"
             min={50}
-            max={300}
+            max={500}
             step={10}
             value={vocabDraft}
             onChange={changeVocabDraft}
@@ -394,6 +642,8 @@ export const SetupView: React.FC<SetupViewProps> = ({
             value={config.mlpRatio}
             onChange={v => updateField('mlpRatio', v)}
           />
+
+          <WidthVsDepth dModel={config.dModel} numLayers={config.numLayers} />
         </Section>
 
         {/* Not a step: real models for comparison */}
@@ -438,6 +688,38 @@ export const SetupView: React.FC<SetupViewProps> = ({
           <BreakdownRow label="Feed-Forward MLP (2 × d_model × d_mlp × L)" value={mlpParams} />
           <BreakdownRow label="Output Unembedding Head (d_model × V)" value={headParams} />
         </div>
+
+        {/* Fit check: what this model and dataset cost to train here, measured on this device */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '24px 0 12px' }}>
+          <Gauge size={18} color="var(--accent-emerald)" />
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 700 }}>Fit check</h3>
+          <InfoTooltip
+            title="Fit check"
+            description="Times a few training steps of this model shape on your device (in the background, on a throwaway copy), then estimates how long training takes. Training runs on one CPU core, so a faster computer helps but a GPU doesn't."
+            impact="Estimates assume the tab stays open and the computer stays awake. Background tabs keep training, and progress is autosaved every 10 seconds."
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem' }}>
+          <FitRow label="Speed on this device" value={msPerStep ? `${(1000 / msPerStep).toFixed(1)} steps/s` : 'measuring…'} hint={tokensPerSecond ? `${Math.round(tokensPerSecond).toLocaleString()} tokens/s` : undefined} />
+          <FitRow label="One pass over the training text" value={onePass ? formatDuration(onePass) : '…'} hint={`${trainTokens.toLocaleString()} tokens`} />
+          <FitRow
+            label="Rule-of-thumb training budget"
+            value={optimalBudget ? formatDuration(optimalBudget) : '…'}
+            hint={`${TOKENS_PER_PARAM} tokens per parameter (Chinchilla)`}
+          />
+          <FitRow label="Memory for training" value={`${memoryMb < 10 ? memoryMb.toFixed(1) : Math.round(memoryMb)} MB`} hint="weights, gradients, optimizer state" />
+        </div>
+        <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: 10, lineHeight: 1.5 }}>
+          {trainTokens < paramCount
+            ? `The dataset has fewer tokens than the model has parameters, so it has room to memorize the text. Watch the validation loss on the Train tab.`
+            : `The dataset has more tokens than the model has parameters (${(trainTokens / paramCount).toFixed(1)} per parameter), so memorizing it all is much harder.`}
+        </p>
+        {optimalBudget !== null && optimalBudget > 3600 && (
+          <p style={{ fontSize: '0.75rem', color: 'var(--accent-amber)', marginTop: 8, lineHeight: 1.5 }}>
+            A long run: expect hours, not minutes, before the loss levels off. Keep the tab open and the computer awake; it's
+            fine to switch tabs or come back later.
+          </p>
+        )}
       </div>
     </div>
   );

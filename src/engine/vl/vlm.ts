@@ -63,6 +63,12 @@ export const PHASE_TRAINS: Record<VlmPhase, { projector: boolean; lm: boolean }>
   2: { projector: true, lm: true },
 };
 
+/** The loss weights for an answer-only loss: 1/N on each of the N answer positions, 0 on the question's */
+const answerWeights = (mask: boolean[]): number[] => {
+  const n = mask.filter(Boolean).length;
+  return mask.map(m => (m && n ? 1 / n : 0));
+};
+
 const argmax = (row: number[]) => row.reduce((best, v, k) => (v > row[best] ? k : best), 0);
 
 export class MicroVlm {
@@ -150,7 +156,7 @@ export class MicroVlm {
     batch.forEach((ex, b) => {
       const proj = phase === 0 ? null : this.project(features[b]);
       const prefix = proj ? proj.tokens : this.imageTokens(null);
-      const r = this.lm.computeGradients(ex.input, ex.target, { prefix, lossMask: ex.lossMask });
+      const r = this.lm.computeGradients(ex.input, ex.target, answerWeights(ex.lossMask), prefix);
       loss += r.loss / batch.length;
       for (const [name, g] of Object.entries(r.grads)) {
         const acc = grads[`lm.${name}`];
@@ -171,7 +177,7 @@ export class MicroVlm {
   public evaluateLoss(batch: VlmExample[], features: Matrix[], phase: VlmPhase): number {
     return batch.reduce((s, ex, b) => {
       const prefix = this.imageTokens(phase === 0 ? null : features[b]);
-      return s + this.lm.evaluateLoss(ex.input, ex.target, { prefix, lossMask: ex.lossMask }).loss / batch.length;
+      return s + this.lm.evaluateLoss(ex.input, ex.target, answerWeights(ex.lossMask), prefix).loss / batch.length;
     }, 0);
   }
 
