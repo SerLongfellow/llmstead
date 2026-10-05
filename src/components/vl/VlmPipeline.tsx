@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Flame, Snowflake } from 'lucide-react';
+import { ArrowRight, Flame, Link2, MessageSquareText, Snowflake } from 'lucide-react';
 import { PHASE_TRAINS, VlmPhase } from '../../engine/vl/vlm';
 
 interface VlmPipelineProps {
@@ -70,14 +70,18 @@ export const VlmPipeline: React.FC<VlmPipelineProps> = ({ phase, params }) => {
 
 export type VisionStage = 'match' | 'describe';
 
-/** Switch between the two stages of the Images + Text mode */
+/**
+ * Switch between the two models of the Images + Text mode. Deliberately unnumbered (icons and
+ * names instead): the navbar's numbered steps (Set up, Train, Look inside) apply to each of them.
+ */
 export const StageBar: React.FC<{ stage: VisionStage; onChange: (s: VisionStage) => void; training: Record<VisionStage, boolean> }> = ({ stage, onChange, training }) => {
-  const stages: { id: VisionStage; n: number; title: string; sub: string }[] = [
-    { id: 'match', n: 1, title: 'Match', sub: 'CLIP: which words fit which picture' },
-    { id: 'describe', n: 2, title: 'Describe', sub: 'VLM: answer questions about a picture' },
+  const stages: { id: VisionStage; icon: React.ReactNode; title: string; sub: string }[] = [
+    { id: 'match', icon: <Link2 size={15} />, title: 'Match · CLIP', sub: 'which words fit which picture' },
+    { id: 'describe', icon: <MessageSquareText size={15} />, title: 'Describe · VLM', sub: 'answers questions about a picture, built on the CLIP' },
   ];
   return (
-    <div role="group" aria-label="Stage" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+    <div role="group" aria-label="Model" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dim)', marginRight: 2 }}>Model:</span>
       {stages.map((s, i) => {
         const active = s.id === stage;
         return (
@@ -92,9 +96,7 @@ export const StageBar: React.FC<{ stage: VisionStage; onChange: (s: VisionStage)
                 background: active ? 'var(--primary-soft)' : 'var(--bg-card)', color: 'var(--text-main)',
               }}
             >
-              <span className="font-mono" style={{ width: 22, height: 22, borderRadius: 11, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, background: active ? 'var(--primary)' : 'var(--bg-card-hover)', color: active ? '#ffffff' : 'var(--text-muted)' }}>
-                {s.n}
-              </span>
+              <span style={{ display: 'inline-flex', color: active ? 'var(--primary)' : 'var(--text-muted)' }}>{s.icon}</span>
               <span style={{ lineHeight: 1.25 }}>
                 <span style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem' }}>{s.title}</span>
                 <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-dim)' }}>{s.sub}</span>

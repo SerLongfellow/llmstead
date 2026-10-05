@@ -21,7 +21,7 @@ const STEPS = [
     step: 2,
     tab: 'training',
     title: 'Train',
-    text: 'Stage ①: watch the right picture + caption pairs light up. Stage ②: run the three phases and watch it start to use the picture.',
+    text: 'Match: watch the right picture + caption pairs light up. Describe: run the three phases and watch it start to use the picture.',
   },
   {
     step: 3,
@@ -38,7 +38,7 @@ const NOT_THIS: { title: string; text: string; link?: { label: string; tab: stri
   },
   {
     title: 'Not a chat model.',
-    text: "The stage ② model answers six kinds of question about one shape, with about 30 words. Real vision-language models put a CLIP-style image tower in front of a large language model that already knows how to talk.",
+    text: "The Describe model answers six kinds of question about one shape, with about 30 words. Real vision-language models put a CLIP-style image tower in front of a large language model that already knows how to talk.",
     link: { label: 'See how they compare →', tab: 'next' },
   },
   {
@@ -62,7 +62,7 @@ const EXPERIMENTS = [
   },
   {
     title: 'Does it actually look?',
-    text: 'In stage ②, after phase 0 (text only) the answers are the same with the picture and with a blank one: it answers from habit. After phase 2 the two lines on the "Does it look" chart split apart. In Look inside, pick the blank picture and ask anything.',
+    text: 'In Describe, after phase 0 (text only) the answers are the same with the picture and with a blank one: it answers from habit. After phase 2 the two lines on the "Does it look" chart split apart. In Look inside, pick the blank picture and ask anything.',
   },
   {
     title: 'Eyes that were never told about size',
@@ -165,9 +165,9 @@ export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, on
     </div>
 
     <div className="glass-panel" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Then: from matching to describing</h3>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Then a second model: from matching to describing</h3>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        CLIP can tell which caption fits, but it can't say anything. Stage ② builds a tiny vision-language model the way LLaVA
+        CLIP can tell which caption fits, but it can't say anything. The second model, Describe, builds a tiny vision-language model the way LLaVA
         (2023) did: your CLIP's image tower, frozen, turns a picture into one vector per patch; a small <b style={{ color: 'var(--text-main)' }}>projector</b>{' '}
         turns each into an "image token" the size of a word embedding; and a GPT reads those tokens followed by a question, then
         writes the answer word by word.
@@ -175,13 +175,13 @@ export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, on
       <VlmPipeline phase={null} />
       <div>
         <button className="btn-secondary" onClick={() => { onStage('describe'); onNavigate('setup'); }}>
-          Go to stage ②: Describe <ArrowRight size={14} />
+          Go to Describe <ArrowRight size={14} />
         </button>
       </div>
     </div>
 
     <div>
-      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>Three steps, left to right, in each of two stages</h3>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>The same three steps for each model</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
         {STEPS.map(s => (
           <button
@@ -247,7 +247,7 @@ export const VisionStartView: React.FC<VisionStartViewProps> = ({ onNavigate, on
 
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
       <button className="btn-primary" onClick={() => { onStage('match'); onNavigate('setup'); }} style={{ padding: '12px 22px', fontSize: '0.95rem' }}>
-        Start with stage ①: set up your CLIP <ArrowRight size={16} />
+        Start with Match: set up your CLIP <ArrowRight size={16} />
       </button>
       {guidesHidden && (
         <button className="btn-secondary" onClick={onShowGuides}>

@@ -56,11 +56,11 @@ const STAGES: { icon: React.ReactNode; title: string; body: React.ReactNode; lin
   },
   {
     icon: <MessageSquareText size={20} color="var(--accent-emerald)" />,
-    title: 'Your stage ② model vs LLaVA',
+    title: 'Your Describe model vs LLaVA',
     body: (
       <>
         <p>
-          Stage ② has the same three parts as LLaVA (2023): a CLIP image tower kept frozen, a <b>projector</b> that turns each
+          Your Describe model has the same three parts as LLaVA (2023): a CLIP image tower kept frozen, a <b>projector</b> that turns each
           patch's vector into an image token, and a GPT-style language model that reads those tokens in front of the question. The
           first LLaVA used a single linear layer as its projector; LLaVA-1.5 switched to a small two-layer MLP, as here.
         </p>

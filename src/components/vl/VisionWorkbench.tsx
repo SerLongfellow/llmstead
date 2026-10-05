@@ -44,8 +44,8 @@ export interface VisionCopy {
 
 /**
  * The image + text side of the site, in two stages:
- *   ① Match: a tiny CLIP learns which captions fit which pictures
- *   ② Describe: a tiny LLaVA-style VLM reads pictures through that CLIP's (frozen) image tower
+ *   Match: a tiny CLIP learns which captions fit which pictures
+ *   Describe: a tiny LLaVA-style VLM reads pictures through that CLIP's (frozen) image tower
  *      and answers questions about them
  */
 export const VisionWorkbench: React.FC<VisionWorkbenchProps> = ({ active, modeSwitch, onTrainingChange }) => {
@@ -97,7 +97,7 @@ export const VisionWorkbench: React.FC<VisionWorkbenchProps> = ({ active, modeSw
     [data]
   );
 
-  // ── Stage 2: the VLM, built the first time stage ② is opened ──
+  // ── Stage 2: the VLM, built the first time Describe is opened ──
   const [vlmSettings, setVlmSettings] = useState<VlmSettings>(DEFAULT_VLM_SETTINGS);
   const [vlmTraining, setVlmTraining] = useState(false);
   const [vlmGeneration, setVlmGeneration] = useState(0);
@@ -175,7 +175,7 @@ export const VisionWorkbench: React.FC<VisionWorkbenchProps> = ({ active, modeSw
                   well. Changing anything here starts the model over from random weights.
                 </>)
               : guide(1, 'Set up your VLM', { label: 'Next: Train', tab: 'training' }, <>
-                  Choose the eyes (your CLIP's image tower, frozen) and the questions it will learn to answer. Train the CLIP in stage ①
+                  Choose the eyes (your CLIP's image tower, frozen) and the questions it will learn to answer. Train the CLIP (Match)
                   first; the defaults are fine for everything else.
                 </>)}
             {match ? (
