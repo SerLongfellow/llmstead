@@ -158,14 +158,19 @@ export const PostTrainView: React.FC<PostTrainViewProps> = ({
   const [useLora, setUseLora] = useState(false);
   const [loraRank, setLoraRank] = useState(4);
 
+  const [running, setRunning] = useState(false);
+
   const sftData = useMemo(
     () => prepareSft(tokenizer, sftExamples.filter(e => e.prompt || e.response), { contextWindow: config.contextWindow, eos: teachEos }),
     [tokenizer, sftExamples, config.contextWindow, teachEos]
   );
-  // DPO compares against the reference, which is the current model until a session freezes one
+  // DPO compares against the reference, which is the current model until a session freezes one.
+  // Scoring every pair is two forward passes each, and every Setup change builds a new model, so
+  // it's only done when DPO is the chosen method and this tab is in use.
+  const dpoInUse = method === 'dpo' && (visible || running);
   const dpoData = useMemo(
-    () => preparePairs(tokenizer, session?.reference ?? model, dpoPairs.filter(p => p.chosen && p.rejected), config.contextWindow),
-    [tokenizer, session, model, dpoPairs, config.contextWindow]
+    () => (dpoInUse ? preparePairs(tokenizer, session?.reference ?? model, dpoPairs.filter(p => p.chosen && p.rejected), config.contextWindow) : []),
+    [dpoInUse, tokenizer, session, model, dpoPairs, config.contextWindow]
   );
 
   const valTokens = useMemo(() => tokenizer.encode(splitDataset(selectedDataset.text).valText).tokens, [tokenizer, selectedDataset]);
@@ -175,7 +180,6 @@ export const PostTrainView: React.FC<PostTrainViewProps> = ({
   const fullCount = model.getParameterCount();
 
   // ── Run state ───────────────────────────────────────────────────────────
-  const [running, setRunning] = useState(false);
   const [stepCount, setStepCount] = useState(0);
   const [points, setPoints] = useState<Point[]>([]);
   const [sftView, setSftView] = useState<{ example: TokenizedExample; probs: number[] } | null>(null);
@@ -623,6 +627,7 @@ export const PostTrainView: React.FC<PostTrainViewProps> = ({
           defaultPrompts={comparePrompts}
           refreshKey={compareKey}
           untouched={!started}
+          visible={visible}
         />
       </div>
     </div>

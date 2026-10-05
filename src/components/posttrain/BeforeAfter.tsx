@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { GitCompare, Play } from 'lucide-react';
 import { MicroTransformer } from '../../engine/transformer';
 import { BPETokenizer } from '../../engine/bpeTokenizer';
@@ -37,7 +37,9 @@ const Score: React.FC<{ r: BenchmarkSuiteResult | null }> = ({ r }) =>
 
 /**
  * The starting model (frozen) next to the post-trained one: the same prompts, greedy replies,
- * and the pre-training benchmark for both. Re-runs when `refreshKey` changes (each pause).
+ * and the pre-training benchmark for both. Re-runs when `refreshKey` changes (each pause), but
+ * only while visible: the tab stays mounted, and every Setup change builds a new model, so running
+ * hidden would generate dozens of replies (and two benchmarks) per slider step.
  */
 export const BeforeAfter: React.FC<{
   base: MicroTransformer;
@@ -49,7 +51,9 @@ export const BeforeAfter: React.FC<{
   refreshKey: number;
   /** Nothing has been post-trained yet, so both columns would be the same model */
   untouched: boolean;
-}> = ({ base, current, tokenizer, datasetId, trainText, defaultPrompts, refreshKey, untouched }) => {
+  /** The Post-train tab is showing; changes while hidden are caught up on when it's next shown */
+  visible: boolean;
+}> = ({ base, current, tokenizer, datasetId, trainText, defaultPrompts, refreshKey, untouched, visible }) => {
   const [promptText, setPromptText] = useState(() => defaultPrompts.map(p => JSON.stringify(p)).join('\n'));
   useEffect(() => setPromptText(defaultPrompts.map(p => JSON.stringify(p)).join('\n')), [defaultPrompts]);
   const [rows, setRows] = useState<Row[]>([]);
@@ -76,8 +80,16 @@ export const BeforeAfter: React.FC<{
       setBench({ base: runBenchmarkSuite(suite, base, tokenizer, trainText), now: runBenchmarkSuite(suite, current, tokenizer, trainText) });
     }
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(run, [refreshKey, base, current, tokenizer]);
+  const stale = useRef(true);
+  useEffect(() => {
+    stale.current = true;
+  }, [refreshKey, base, current, tokenizer]);
+  useEffect(() => {
+    if (!visible || !stale.current) return;
+    stale.current = false;
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, refreshKey, base, current, tokenizer]);
 
   return (
     <div className="glass-panel" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>

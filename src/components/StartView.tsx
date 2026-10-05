@@ -69,6 +69,14 @@ const EXPERIMENTS = [
     text: 'Train on one of the small datasets and watch the two loss curves. When training loss keeps falling but validation loss stalls, the model is memorizing instead of generalizing.',
   },
   {
+    title: 'Same size, different shape',
+    text: 'In Set up, pick the Wide & shallow profile and train Q&A for a few thousand steps, noting the validation loss. Then do the same with Deep & narrow, which has nearly the same number of parameters. Which shape learns more from the same steps?',
+  },
+  {
+    title: 'Teach it to tell stories',
+    text: 'In Set up, pick the TinyStories dataset (a 2 MB download, about 100× more text) and the Storyteller profile, then train for half an hour and generate from "Once upon a time". Watch it go from random letters to common words to whole story phrases, and notice what it still gets wrong.',
+  },
+  {
     title: 'Watch RL find a shortcut',
     text: 'Train the math dataset, then open Post-train, choose RL and press Start. The reward climbs fast. Look at which numbers it settles on, and at the held-out two-digit questions: did it learn to compare, or just a trick that works for single digits?',
   },

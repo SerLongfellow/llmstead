@@ -112,6 +112,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   const [temperature, setTemperature] = useState<number>(0.7);
   const [maxGenTokens, setMaxGenTokens] = useState<number>(40);
   const [generatedText, setGeneratedText] = useState<string>('');
+  /** Training step the shown text was generated at (step 0 gets a note on where its words come from) */
+  const [generatedAtStep, setGeneratedAtStep] = useState<number | null>(null);
   // New dataset, new example prompt
   useEffect(() => {
     setSeedPrompt(samplePromptFor(selectedDataset));
@@ -345,6 +347,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
       temperature,
     });
     setGeneratedText(seedPrompt + continuation);
+    setGeneratedAtStep(stepRef.current);
   };
 
   // The chart is created while the tab may be hidden (0×0) and doesn't always notice when it
@@ -697,6 +700,14 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
           <div className="font-mono" style={{ flex: 1, minHeight: '120px', fontSize: '0.9rem', color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>
             {generatedText || <span style={{ color: 'var(--text-dim)' }}>Click "Generate Tokens" to sample text output from the model...</span>}
           </div>
+          {generatedText && generatedAtStep === 0 && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-color)' }}>
+              <b style={{ color: 'var(--text-main)' }}>Step 0: this model hasn't trained yet</b>, so it picks tokens almost at random. Any real
+              words come from the tokenizer, not the model: BPE already merged the dataset's most common character runs into single tokens
+              (with a big vocabulary, whole phrases). It also tends to repeat a few favourites, because random weights happen to score some
+              tokens far higher than others.
+            </p>
+          )}
         </div>
       </div>
 

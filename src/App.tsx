@@ -2,8 +2,9 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { SavedSession, SaveStatus, TrainingHistory, loadSession, saveSession, clearSession } from './persistence';
 import { DatasetOption, StepInspectionData, TransformerConfig } from './types';
 import { MicroTransformer } from './engine/transformer';
-import { BPETokenizer } from './engine/bpeTokenizer';
-import { SAMPLE_DATASETS, samplePromptFor } from './engine/datasets';
+import { SAMPLE_DATASETS, DOWNLOADABLE_DATASETS, BUILT_IN_DATASET_IDS, loadDatasetText, samplePromptFor } from './engine/datasets';
+import { ProfileShape, matchingProfile, shapeOf } from './engine/modelProfiles';
+import { BACKGROUND_TOKENIZE_CHARS, prepareTokenizer, tokenizerFor } from './engine/tokenizers';
 import { ExportModal } from './components/ExportModal';
 import { Navbar } from './components/Navbar';
 import { SetupView } from './components/SetupView';
@@ -46,9 +47,23 @@ const AUTOSAVE_MS = 10_000;
 /** Longest the first render waits for the web fonts before showing the app anyway */
 const FONT_WAIT_MS = 600;
 
+/**
+ * Datasets this big take seconds to tokenize, so changes that retokenize one show a notice while
+ * the tokenizer is prepared in the background (see Workbench's withNotice)
+ */
+const isBig = (ds: DatasetOption) => Math.max(ds.text.length, ds.download?.bytes ?? 0) >= BACKGROUND_TOKENIZE_CHARS;
+
+type Boot = {
+  saved: SavedSession | null;
+  datasets: DatasetOption[];
+  /** The saved dataset needs downloading and the download failed */
+  downloadFailed: boolean;
+};
+
 /** Reads the autosave (if any) once, then renders the app starting from it */
 export default function App() {
-  const [boot, setBoot] = useState<{ saved: SavedSession | null } | null>(null);
+  const [boot, setBoot] = useState<Boot | null>(null);
+  const [bootNote, setBootNote] = useState<string | null>(null);
   useEffect(() => {
     // Also start the web fonts loading now and wait for them (briefly), so the app doesn't first
     // render in a fallback font and then reflow when Inter arrives. Never wait more than FONT_WAIT_MS.
@@ -56,35 +71,72 @@ export default function App() {
       Promise.all(['400 1em Inter', '700 1em Inter', '400 1em "JetBrains Mono"'].map(f => document.fonts?.load(f))).catch(() => {}),
       new Promise(resolve => setTimeout(resolve, FONT_WAIT_MS)),
     ]);
-    Promise.all([loadSession(), fonts]).then(([saved]) => setBoot({ saved }));
+    Promise.all([loadSession(), fonts]).then(async ([saved]) => {
+      let datasets = [...SAMPLE_DATASETS, ...DOWNLOADABLE_DATASETS, ...(saved?.customDatasets ?? [])];
+      // A saved session on a downloadable dataset needs its text before anything can be rebuilt
+      const pick = datasets.find(d => d.id === saved?.selectedDatasetId);
+      let downloadFailed = false;
+      if (saved && pick && isBig(pick)) {
+        setBootNote(`Restoring your model: loading ${pick.name} and rebuilding its tokenizer…`);
+        try {
+          const loaded = await loadDatasetText(pick);
+          datasets = datasets.map(d => (d === pick ? loaded : d));
+          await prepareTokenizer(loaded.text, saved.config.vocabSize);
+        } catch {
+          downloadFailed = true;
+        }
+      }
+      setBoot({ saved, datasets, downloadFailed });
+    });
   }, []);
   // Loading takes a few milliseconds; show just the page background (set in index.html) rather
   // than flash the defaults, then the app fades in (.app-shell)
-  if (!boot) return null;
-  return <Workbench saved={boot.saved} />;
+  if (!boot) return bootNote ? <BusyNotice text={bootNote} /> : null;
+  return <Workbench saved={boot.saved} initialDatasets={boot.datasets} downloadFailed={boot.downloadFailed} />;
 }
 
+/** Shown while a big dataset downloads or its tokenizer is built */
+const BusyNotice: React.FC<{ text: string }> = ({ text }) => (
+  <div
+    role="status"
+    style={{
+      position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, maxWidth: 'calc(100% - 32px)',
+      padding: '10px 18px', borderRadius: 10, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)',
+      background: 'var(--surface-inset)', border: '1px solid var(--primary)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+    }}
+  >
+    {text}
+  </div>
+);
 
-type RestoreNote = { kind: 'restored'; step: number; savedAt: number } | { kind: 'discarded'; reason: 'vocabulary' | 'architecture' };
 
-function Workbench({ saved }: { saved: SavedSession | null }) {
-  // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches)
-  const [datasets, setDatasets] = useState<DatasetOption[]>(() => [...SAMPLE_DATASETS, ...(saved?.customDatasets ?? [])]);
+type RestoreNote =
+  | { kind: 'restored'; step: number; savedAt: number }
+  | { kind: 'discarded'; reason: 'vocabulary' | 'architecture' }
+  | { kind: 'download-failed'; datasetName: string };
+
+function Workbench({ saved, initialDatasets, downloadFailed }: { saved: SavedSession | null; initialDatasets: DatasetOption[]; downloadFailed: boolean }) {
+  // Built-in datasets plus any custom text added in Setup (kept here so it survives tab switches).
+  // Downloadable datasets have empty text until they're picked.
+  const [datasets, setDatasets] = useState<DatasetOption[]>(initialDatasets);
   const [selectedDataset, setSelectedDataset] = useState<DatasetOption>(
-    () => datasets.find(d => d.id === saved?.selectedDatasetId) ?? SAMPLE_DATASETS[0]
+    () => datasets.find(d => d.id === saved?.selectedDatasetId && !downloadFailed) ?? SAMPLE_DATASETS[0]
   );
 
   // Transformer Hyperparameters
   const [config, setConfig] = useState<TransformerConfig>(() => saved?.config ?? DEFAULT_CONFIG);
+  // The most recent settings that matched no profile, so Setup's Custom card can bring them back
+  // after trying a profile
+  const [lastCustomShape, setLastCustomShape] = useState<ProfileShape | null>(null);
+  useEffect(() => {
+    if (!matchingProfile(config)) setLastCustomShape(shapeOf(config));
+  }, [config]);
 
   // BPE Tokenizer Engine instance, trained on the selected dataset. config.vocabSize is the
   // *target* vocab size (set in Setup). Rebuilt (never mutated) when either changes, and
   // since the model's embedding table depends on the vocabulary, that also means a new model.
-  const tokenizer = useMemo(() => {
-    const t = new BPETokenizer();
-    t.train(selectedDataset.text, config.vocabSize);
-    return t;
-  }, [selectedDataset, config.vocabSize]);
+  // (A big dataset's tokenizer was already prepared in the background: see withNotice.)
+  const tokenizer = useMemo(() => tokenizerFor(selectedDataset.text, config.vocabSize), [selectedDataset, config.vocabSize]);
 
   const tokenizerState = useMemo(() => tokenizer.getState(selectedDataset.text), [tokenizer, selectedDataset]);
 
@@ -100,6 +152,7 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   const restoredModel = useRef<MicroTransformer | null>(null);
   const [restoreNote, setRestoreNote] = useState<RestoreNote | null>(() => {
     if (!saved) return null;
+    if (downloadFailed) return { kind: 'download-failed', datasetName: datasets.find(d => d.id === saved.selectedDatasetId)?.name ?? 'the dataset' };
     if (saved.outdatedModel) return saved.history.stepCount > 0 ? { kind: 'discarded', reason: 'architecture' } : null;
     const vocabulary = Array.from({ length: actualVocab }, (_, id) => tokenizer.decode([id]));
     const sameVocab = vocabulary.length === saved.vocabulary.length && vocabulary.every((t, i) => t === saved.vocabulary[i]);
@@ -158,10 +211,44 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
     runInspection();
   }, [testSentence, model, tokenizer]);
 
-  const handleSelectDataset = (ds: DatasetOption) => {
-    setSelectedDataset(ds);
-    setTestSentence(samplePromptFor(ds));
+  // A big dataset's tokenizer takes seconds to train. Before a change that needs a new one,
+  // withNotice puts up a notice, trains it in the background, and only then makes the change
+  // (the notice clears once the change has rendered).
+  const [busyNote, setBusyNote] = useState<string | null>(null);
+  const withNotice = async (text: string, vocabSize: number, note: string, change: () => void) => {
+    if (text.length < BACKGROUND_TOKENIZE_CHARS) return change();
+    setBusyNote(note);
+    await prepareTokenizer(text, vocabSize);
+    change();
+    setTimeout(() => setBusyNote(null), 0);
   };
+  const [datasetError, setDatasetError] = useState<string | null>(null);
+
+  const handleSelectDataset = async (picked: DatasetOption) => {
+    setDatasetError(null);
+    let ds = picked;
+    if (picked.download && !picked.text) {
+      setBusyNote(`Downloading ${picked.name} (${(picked.download.bytes / 1e6).toFixed(1)} MB)…`);
+      try {
+        ds = await loadDatasetText(picked);
+      } catch {
+        setBusyNote(null);
+        setDatasetError(`Couldn't download ${picked.name}. Check your connection and try again.`);
+        return;
+      }
+      setDatasets(prev => prev.map(d => (d.id === ds.id ? ds : d)));
+    }
+    withNotice(ds.text, config.vocabSize, `Building a tokenizer from ${ds.name}…`, () => {
+      setSelectedDataset(ds);
+      setTestSentence(samplePromptFor(ds));
+    });
+  };
+
+  const retokenizeNote = `Rebuilding the tokenizer from ${selectedDataset.name}…`;
+  const handleChangeVocabSize = (vocabSize: number) =>
+    withNotice(selectedDataset.text, vocabSize, retokenizeNote, () => setConfig(prev => ({ ...prev, vocabSize })));
+  const handleApplyProfile = (shape: ProfileShape) =>
+    withNotice(selectedDataset.text, shape.vocabSize, retokenizeNote, () => setConfig(prev => ({ ...prev, ...shape })));
 
   const handleAddDataset = (ds: DatasetOption) => {
     setDatasets(prev => [...prev, ds]);
@@ -217,7 +304,9 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
   const history = useRef<TrainingHistory>(initialHistory ?? { stepCount: 0, lossHistory: [], valLossHistory: [], stepLabels: [] });
   const dirty = useRef(false);
-  const savingOff = useRef(false);
+  // Off if the saved dataset couldn't be downloaded: saving now would overwrite that model with
+  // this fallback one, so leave the save alone for a reload to retry
+  const savingOff = useRef(downloadFailed);
   const latest = useRef({ config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab, postTrain });
   latest.current = { config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab, postTrain };
 
@@ -229,7 +318,7 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
     saveSession({
       config: s.config,
       selectedDatasetId: s.selectedDataset.id,
-      customDatasets: s.datasets.filter(d => !SAMPLE_DATASETS.includes(d)),
+      customDatasets: s.datasets.filter(d => !BUILT_IN_DATASET_IDS.has(d.id)),
       vocabulary: Array.from({ length: s.actualVocab }, (_, id) => s.tokenizer.decode([id])),
       testSentence: s.testSentence,
       // While post-training, save the pre-trained weights: post-training isn't saved, so a reload
@@ -286,6 +375,8 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
         trainingBusy={isTraining}
       />
 
+      {busyNote && <BusyNotice text={busyNote} />}
+
       <main style={{ minHeight: '80vh' }}>
         {restoreNote && (
           <div
@@ -300,6 +391,11 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
                 <>
                   <b style={{ color: 'var(--text-main)' }}>Welcome back.</b> Your model was restored from step #{restoreNote.step.toLocaleString()}
                   {' '}(saved in this browser {new Date(restoreNote.savedAt).toLocaleString()}).
+                </>
+              ) : restoreNote.kind === 'download-failed' ? (
+                <>
+                  Your saved model was trained on {restoreNote.datasetName}, which couldn't be downloaded just now, so you're on the
+                  default dataset. Autosave is off until you reload, so your saved model isn't overwritten. Reload to try again.
                 </>
               ) : restoreNote.reason === 'architecture' ? (
                 <>
@@ -346,9 +442,12 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
               selectedDataset={selectedDataset}
               onSelectDataset={handleSelectDataset}
               onAddDataset={handleAddDataset}
+              datasetError={datasetError}
               tokenizer={tokenizer}
               targetVocabSize={config.vocabSize}
-              onChangeVocabSize={(vocabSize) => setConfig(prev => ({ ...prev, vocabSize }))}
+              onChangeVocabSize={handleChangeVocabSize}
+              onApplyProfile={handleApplyProfile}
+              lastCustomShape={lastCustomShape}
               config={effectiveConfig}
               // Setup sees the effective vocab; the target vocab only changes via its own slider
               onChangeConfig={(next) => setConfig({ ...next, vocabSize: config.vocabSize })}
