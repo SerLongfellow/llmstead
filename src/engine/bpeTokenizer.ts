@@ -173,4 +173,9 @@ export class BPETokenizer {
   public getVocabSize(): number {
     return this.vocab.size;
   }
+
+  /** Id of a special token such as '<EOS>'. Pre-training never shows the model one; SFT can teach it to end a reply with '<EOS>'. */
+  public specialId(name: '<PAD>' | '<UNK>' | '<BOS>' | '<EOS>'): number {
+    return this.tokenToId.get(name)!;
+  }
 }

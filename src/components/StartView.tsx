@@ -27,6 +27,12 @@ const STEPS = [
     title: 'Look inside',
     text: 'Type a prompt and follow it through every stage: tokens, embeddings, attention, and the final prediction.',
   },
+  {
+    step: 4,
+    tab: 'posttrain',
+    title: 'Post-train',
+    text: 'Turn the text-continuer into something closer to an assistant with fine-tuning, preferences or rewards, and see what it costs.',
+  },
 ];
 
 const NOT_THIS: { title: string; text: string; link?: { label: string; tab: string } }[] = [
@@ -40,7 +46,7 @@ const NOT_THIS: { title: string; text: string; link?: { label: string; tab: stri
   },
   {
     title: 'Not the whole recipe behind chat assistants.',
-    text: 'This covers pre-training: learning to predict the next token. Assistants like ChatGPT and Claude also go through fine-tuning and training on human feedback, which LLMStead doesn\'t do.',
+    text: 'This covers pre-training (learning to predict the next token) and the mechanics of post-training on a dozen examples. Assistants like ChatGPT and Claude are fine-tuned on vast curated datasets and trained on human feedback at a scale nothing here comes close to.',
     link: { label: "See what comes next →", tab: 'next' },
   },
   {
@@ -61,6 +67,10 @@ const EXPERIMENTS = [
   {
     title: 'Memorizing vs. learning',
     text: 'Train on one of the small datasets and watch the two loss curves. When training loss keeps falling but validation loss stalls, the model is memorizing instead of generalizing.',
+  },
+  {
+    title: 'Watch RL find a shortcut',
+    text: 'Train the math dataset, then open Post-train, choose RL and press Start. The reward climbs fast. Look at which numbers it settles on, and at the held-out two-digit questions: did it learn to compare, or just a trick that works for single digits?',
   },
 ];
 
@@ -84,7 +94,7 @@ export const StartView: React.FC<StartViewProps> = ({ onNavigate, guidesHidden, 
 
     {/* The path */}
     <div>
-      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>How it works: three steps, left to right</h3>
+      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>How it works: four steps, left to right</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
         {STEPS.map(s => (
           <button

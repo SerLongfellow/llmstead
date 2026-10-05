@@ -62,6 +62,14 @@ interface TrainingDashboardProps {
   /** Called whenever the history changes, so App can autosave it with the model */
   onHistoryChange: (history: TrainingHistory) => void;
   saveStatus: SaveStatus;
+  /**
+   * The model has been post-trained (Post-train tab). Pre-training stays locked until the user
+   * either restores the pre-trained weights or keeps the post-trained ones as the new base.
+   */
+  postTrained: boolean;
+  onRestoreBase: () => void;
+  onKeepPostTrained: () => void;
+  onNavigateToPostTrain: () => void;
 }
 
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
@@ -77,6 +85,10 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
   initialHistory,
   onHistoryChange,
   saveStatus,
+  postTrained,
+  onRestoreBase,
+  onKeepPostTrained,
+  onNavigateToPostTrain,
 }) => {
   const [isTraining, setIsTraining] = useState<boolean>(false);
   // True from Start until the training worker has handed back its final weights (a few ms after
@@ -405,6 +417,28 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 480px), 1fr))', gap: '20px' }}>
       {/* Training controls: full width, so the slow-motion panel can sit directly underneath */}
       <div className="glass-panel" style={{ padding: '16px 24px', gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {postTrained && (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10,
+              fontSize: '0.85rem', color: 'var(--text-muted)', background: 'var(--amber-soft)', border: '1px solid var(--accent-amber)',
+            }}
+          >
+            <span style={{ flex: '1 1 260px' }}>
+              <b style={{ color: 'var(--text-main)' }}>This model has been post-trained</b> on the{' '}
+              <button onClick={onNavigateToPostTrain} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary)', cursor: 'pointer', font: 'inherit' }}>
+                Post-train tab
+              </button>
+              . Pre-training more would build on the post-trained weights and end that comparison.
+            </span>
+            <button className="btn-secondary" onClick={onRestoreBase} style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
+              Restore the pre-trained model
+            </button>
+            <button className="btn-secondary" onClick={onKeepPostTrained} style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
+              Keep the post-trained weights
+            </button>
+          </div>
+        )}
         {/* What's being trained on (chosen in Setup, since changing it resets the model) */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -434,14 +468,14 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({
             <button
               className={isTraining ? 'btn-secondary' : 'btn-primary'}
               onClick={() => setIsTraining(!isTraining)}
-              disabled={!isTraining && workerBusy}
+              disabled={!isTraining && (workerBusy || postTrained)}
             >
               {isTraining ? <Pause size={16} /> : <Play size={16} />}
               {isTraining ? 'Pause Training' : workerBusy ? 'Pausing…' : slowMo ? 'Play Slow Motion' : 'Start Continuous Train'}
             </button>
 
             {/* While the worker trains, the page's model is only a copy, so single steps wait */}
-            <button className="btn-secondary" onClick={performTrainStep} disabled={workerBusy}>
+            <button className="btn-secondary" onClick={performTrainStep} disabled={workerBusy || postTrained}>
               <FastForward size={16} /> Step
             </button>
 

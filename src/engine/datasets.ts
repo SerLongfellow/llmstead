@@ -1,7 +1,7 @@
 import { DatasetOption } from '../types';
 
 /** Small seeded PRNG (mulberry32) so generated datasets are identical on every load */
-function seededRandom(seed: number): () => number {
+export function seededRandom(seed: number): () => number {
   return () => {
     seed = (seed + 0x6d2b79f5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);

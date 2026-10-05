@@ -270,25 +270,45 @@ export class MicroTransformer {
     return { data, caches };
   }
 
-  /** Mean cross-entropy of next-token predictions: L = −(1/N) Σ log P(target_i) */
-  private crossEntropy(probs: number[][], targetTokens: number[], seqLen: number): number {
+  /**
+   * Cross-entropy of next-token predictions: L = −Σ wᵢ log P(target_i). With no weights every
+   * position counts 1/N, the plain mean used in pre-training. Post-training passes its own:
+   * zeros on prompt tokens (SFT), or signed weights that push a sequence up or down (DPO, RL).
+   */
+  private crossEntropy(probs: number[][], targetTokens: number[], seqLen: number, weights?: number[]): number {
     let totalLoss = 0;
     for (let i = 0; i < seqLen; i++) {
       const targetId = targetTokens[i];
       if (targetId < probs[i].length) {
-        totalLoss -= Math.log(Math.max(probs[i][targetId], 1e-10));
+        totalLoss -= (weights ? weights[i] : 1) * Math.log(Math.max(probs[i][targetId], 1e-10));
       }
     }
-    return totalLoss / seqLen;
+    return weights ? totalLoss : totalLoss / seqLen;
   }
 
   /** Forward pass only (no weight updates) — used for validation loss on held-out text */
-  public evaluateLoss(inputTokens: number[], targetTokens: number[]): { loss: number; perplexity: number } {
+  public evaluateLoss(
+    inputTokens: number[],
+    targetTokens: number[],
+    weights?: number[]
+  ): { loss: number; perplexity: number } {
     const seqLen = Math.min(inputTokens.length, targetTokens.length, this.config.contextWindow);
     if (seqLen === 0) return { loss: 0, perplexity: 1 };
     const forward = this.inspectForwardPass(inputTokens.slice(0, seqLen), inputTokens.slice(0, seqLen).map(String));
-    const loss = this.crossEntropy(forward.probabilities, targetTokens, seqLen);
+    const loss = this.crossEntropy(forward.probabilities, targetTokens, seqLen, weights);
     return { loss, perplexity: Math.exp(loss) };
+  }
+
+  /**
+   * log P(tokens[i+1] | tokens[0..i]) for every position i, from one forward pass: entry i is
+   * how likely the model found the token that actually came next. Summing a response's entries
+   * gives the log-probability of the whole response, which DPO and RL compare.
+   */
+  public tokenLogProbs(tokens: number[]): number[] {
+    const n = Math.min(tokens.length - 1, this.config.contextWindow);
+    if (n <= 0) return [];
+    const { probabilities } = this.inspectForwardPass(tokens.slice(0, n), tokens.slice(0, n).map(String));
+    return probabilities.map((row, i) => Math.log(Math.max(row[tokens[i + 1]] ?? 0, 1e-10)));
   }
 
 
@@ -361,10 +381,14 @@ export class MicroTransformer {
    *   residual   y = a + b        da = dy,     db = dy     (gradient is copied to both branches)
    *   LayerNorm, GELU, softmax    see MatrixMath.*Backward
    *   embedding  x_i = E[tok_i]   dE[tok_i] += dx_i        (scatter-add; repeated tokens accumulate)
+   *
+   * `weights` (one per position) turns the mean into a weighted sum, L = −Σ wᵢ log P(target_i)
+   * (see crossEntropy). Only the first step below changes; the rest of the pass is the same.
    */
   public computeGradients(
     inputTokens: number[],
-    targetTokens: number[]
+    targetTokens: number[],
+    weights?: number[]
   ): { loss: number; perplexity: number; grads: Record<string, Matrix> } {
     const seqLen = Math.min(inputTokens.length, targetTokens.length, this.config.contextWindow);
     const { vocabSize, contextWindow, dModel, numHeads, numLayers } = this.config;
@@ -381,12 +405,12 @@ export class MicroTransformer {
 
     const tokens = inputTokens.slice(0, seqLen);
     const { data: fwd, caches } = this.forward(tokens, tokens.map(String));
-    const loss = this.crossEntropy(fwd.probabilities, targetTokens, seqLen);
+    const loss = this.crossEntropy(fwd.probabilities, targetTokens, seqLen, weights);
 
-    // ── Softmax + cross-entropy combined: ∂L/∂logits_i = (p_i − onehot(target_i)) / N
-    const dLogits: Matrix = fwd.probabilities.map((row, i) =>
-      row.map((p, k) => (p - (k === targetTokens[i] ? 1 : 0)) / seqLen)
-    );
+    // ── Softmax + cross-entropy combined: ∂L/∂logits_i = wᵢ · (p_i − onehot(target_i)), wᵢ = 1/N by default
+    const dLogits: Matrix = weights
+      ? fwd.probabilities.map((row, i) => row.map((p, k) => weights[i] * (p - (k === targetTokens[i] ? 1 : 0))))
+      : fwd.probabilities.map((row, i) => row.map((p, k) => (p - (k === targetTokens[i] ? 1 : 0)) / seqLen));
 
     // ── Output head: logits = finalNorm · W_head
     grads.wHead = mm(T(fwd.finalNorm), dLogits);
@@ -490,21 +514,39 @@ export class MicroTransformer {
     maxGradNorm: number = 1.0
   ): { loss: number; perplexity: number; gradNorm: number } {
     const { loss, perplexity, grads } = this.computeGradients(inputTokens, targetTokens);
+    const gradNorm = this.applyGradients(grads, lr, maxGradNorm);
+    return { loss, perplexity, gradNorm };
+  }
 
-    let sumSq = 0;
-    for (const g of Object.values(grads)) {
-      for (const row of g) for (const v of row) sumSq += v * v;
-    }
-    const gradNorm = Math.sqrt(sumSq);
+  /**
+   * Clip `grads` to a global L2 norm of `maxGradNorm`, then let the optimizer update every
+   * parameter. Returns the norm before clipping. Post-training passes its own optimizer, so its
+   * Adam memory starts fresh instead of carrying pre-training's.
+   */
+  public applyGradients(
+    grads: Record<string, Matrix>,
+    lr: number,
+    maxGradNorm: number = 1.0,
+    optimizer: Optimizer = this.optimizer
+  ): number {
+    const gradNorm = globalNorm(grads);
     const clip = gradNorm > maxGradNorm ? maxGradNorm / gradNorm : 1;
 
     const params = this.getParameters();
     for (const [name, g] of Object.entries(grads)) {
       // Scale in place: these gradients are fresh each step, so there's no need to copy them
       if (clip !== 1) for (const row of g) for (let c = 0; c < row.length; c++) row[c] *= clip;
-      this.optimizer.step(name, params[name], g, lr);
+      optimizer.step(name, params[name], g, lr);
     }
-
-    return { loss, perplexity, gradNorm };
+    return gradNorm;
   }
+}
+
+/** √(Σ g²) over every entry of every matrix */
+export function globalNorm(grads: Record<string, Matrix>): number {
+  let sumSq = 0;
+  for (const g of Object.values(grads)) {
+    for (const row of g) for (const v of row) sumSq += v * v;
+  }
+  return Math.sqrt(sumSq);
 }

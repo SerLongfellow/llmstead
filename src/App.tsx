@@ -12,6 +12,7 @@ import { PipelineView } from './components/PipelineView';
 import { StartView } from './components/StartView';
 import { GuideStrip } from './components/GuideStrip';
 import { WhatsNextView } from './components/WhatsNextView';
+import { PostTrainSession, PostTrainView } from './components/posttrain/PostTrainView';
 import { Github, History, X } from 'lucide-react';
 
 // Other places to learn how transformers work, linked from the footer
@@ -187,7 +188,26 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   };
 
   const [isTraining, setIsTraining] = useState<boolean>(false);
+  const [isPostTraining, setIsPostTraining] = useState<boolean>(false);
   const [exportOpen, setExportOpen] = useState(false);
+
+  // ── Post-training ─────────────────────────────────────────────────────────
+  // Starting post-training freezes a copy of the pre-trained weights: the "before" for every
+  // comparison, DPO's and RL's reference, and what Restore puts back. A new model ends it.
+  const [postTrain, setPostTrain] = useState<PostTrainSession | null>(null);
+  useEffect(() => setPostTrain(null), [model]);
+  const beginPostTrain = useCallback((): PostTrainSession => {
+    const base = model.exportState();
+    const reference = new MicroTransformer(model.config);
+    reference.importState(base);
+    const session = { base, reference };
+    setPostTrain(session);
+    return session;
+  }, [model]);
+  const restorePreTrained = () => {
+    if (postTrain) model.importState(postTrain.base);
+    setPostTrain(null);
+  };
   const closeExport = useCallback(() => setExportOpen(false), []);
 
   // ── Autosave ──────────────────────────────────────────────────────────────
@@ -198,8 +218,8 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   const history = useRef<TrainingHistory>(initialHistory ?? { stepCount: 0, lossHistory: [], valLossHistory: [], stepLabels: [] });
   const dirty = useRef(false);
   const savingOff = useRef(false);
-  const latest = useRef({ config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab });
-  latest.current = { config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab };
+  const latest = useRef({ config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab, postTrain });
+  latest.current = { config, datasets, selectedDataset, testSentence, tokenizer, model, actualVocab, postTrain };
 
   const saveNow = () => {
     if (!dirty.current || savingOff.current) return;
@@ -212,7 +232,9 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
       customDatasets: s.datasets.filter(d => !SAMPLE_DATASETS.includes(d)),
       vocabulary: Array.from({ length: s.actualVocab }, (_, id) => s.tokenizer.decode([id])),
       testSentence: s.testSentence,
-      model: s.model.exportState(),
+      // While post-training, save the pre-trained weights: post-training isn't saved, so a reload
+      // comes back to the model it started from
+      model: s.postTrain ? s.postTrain.base : s.model.exportState(),
       history: history.current,
     }).then(ok => setSaveStatus(ok ? { kind: 'saved', at: Date.now() } : { kind: 'unavailable' }));
   };
@@ -223,7 +245,7 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
   };
   useEffect(() => {
     dirty.current = true;
-  }, [config, datasets, selectedDataset, testSentence, model]);
+  }, [config, datasets, selectedDataset, testSentence, model, postTrain]);
   useEffect(() => {
     if (!isTraining) saveNow();
   }, [isTraining]);
@@ -251,6 +273,7 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTraining={isTraining}
+        isPostTraining={isPostTraining}
         onExport={() => setExportOpen(true)}
       />
       <ExportModal
@@ -356,13 +379,17 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
             initialHistory={initialHistory}
             onHistoryChange={onHistoryChange}
             saveStatus={saveStatus}
+            postTrained={postTrain !== null}
+            onRestoreBase={restorePreTrained}
+            onKeepPostTrained={() => setPostTrain(null)}
+            onNavigateToPostTrain={() => setActiveTab('posttrain')}
           />
         </div>
 
         {activeTab === 'pipeline' && (
           <>
             {!guidesHidden && (
-              <GuideStrip step={3} title="Look inside" next={{ label: "Next: What's next", onClick: () => setActiveTab('next') }} onHide={() => setGuides(true)}>
+              <GuideStrip step={3} title="Look inside" next={{ label: 'Next: Post-train', onClick: () => setActiveTab('posttrain') }} onHide={() => setGuides(true)}>
                 Type a prompt, click a stage to see what happens to it there, and click a token to follow it through the model.
                 Compare the same prompt before and after more training.
               </GuideStrip>
@@ -380,7 +407,30 @@ function Workbench({ saved }: { saved: SavedSession | null }) {
           </>
         )}
 
-        {activeTab === 'next' && <WhatsNextView onNavigate={setActiveTab} />}
+        {/* Kept mounted like Train, so post-training keeps running while you look elsewhere */}
+        <div style={{ display: activeTab === 'posttrain' ? 'block' : 'none' }}>
+          {!guidesHidden && (
+            <GuideStrip step={4} title="Post-train it" next={{ label: "Next: What's next", onClick: () => setActiveTab('next') }} onHide={() => setGuides(true)}>
+              Pre-training taught the model to continue text. Pick a method, look at its starter data, and press Start: then
+              compare the model before and after, and watch what it costs. Restore brings the pre-trained model back.
+            </GuideStrip>
+          )}
+          <PostTrainView
+            model={model}
+            tokenizer={tokenizer}
+            config={effectiveConfig}
+            selectedDataset={selectedDataset}
+            session={postTrain}
+            onBeginSession={beginPostTrain}
+            onRestoreBase={restorePreTrained}
+            pretrainBusy={isTraining}
+            visible={activeTab === 'posttrain'}
+            onRunningChange={setIsPostTraining}
+            onNavigateToTrain={() => setActiveTab('training')}
+          />
+        </div>
+
+        {activeTab === 'next' && <WhatsNextView onNavigate={setActiveTab} onExport={() => setExportOpen(true)} />}
       </main>
 
       <footer style={{ marginTop: '40px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>

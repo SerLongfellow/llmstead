@@ -6,16 +6,19 @@ interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   isTraining: boolean;
+  /** Post-training is running (a pulsing dot on its tab, like Train's) */
+  isPostTraining: boolean;
   /** Opens the export dialog (download the model as a GGUF file for Ollama) */
   onExport: () => void;
 }
 
-/** The app's path, in order. Start is the intro, the middle three are numbered steps, and What's next is reading. */
+/** The app's path, in order. Start is the intro, the middle four are numbered steps, and What's next is reading. */
 export const TABS = [
   { id: 'start', label: 'Start here', step: null },
   { id: 'setup', label: 'Set up', step: 1 },
   { id: 'training', label: 'Train', step: 2 },
   { id: 'pipeline', label: 'Look inside', step: 3 },
+  { id: 'posttrain', label: 'Post-train', step: 4 },
   { id: 'next', label: "What's next", step: null },
 ] as const;
 
@@ -23,6 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   isTraining,
+  isPostTraining,
   onExport,
 }) => {
   const tabs = TABS;
@@ -98,9 +102,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 )}
                 <span>{tab.label}</span>
-                {tab.id === 'training' && isTraining && (
+                {((tab.id === 'training' && isTraining) || (tab.id === 'posttrain' && isPostTraining)) && (
                   <span
-                    title="Training is running"
+                    title={tab.id === 'training' ? 'Training is running' : 'Post-training is running'}
                     style={{ width: 7, height: 7, borderRadius: 4, background: 'var(--accent-emerald)', animation: 'pulse 1.2s ease-in-out infinite' }}
                   />
                 )}
