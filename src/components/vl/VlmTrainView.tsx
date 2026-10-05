@@ -10,6 +10,7 @@ import { EVAL_EVERY, VlmDataSettings, VlmEvalResult, isEvalDue, runVlmEval, task
 import type { FromVlmWorker, ToVlmWorker } from '../../engine/vl/vlmWorker';
 import { THEME, withAlpha } from '../../styles/theme';
 import { InfoTooltip } from '../InfoTooltip';
+import { AlignExplainer } from './AlignExplainer';
 import { VlmPipeline } from './VlmPipeline';
 import { PHASE_LR, VlmSettings } from './visionSettings';
 
@@ -275,7 +276,7 @@ export const VlmTrainView: React.FC<VlmTrainViewProps> = ({
             </button>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, alignItems: 'start' }}>
           {PHASES.map(p => {
             const current = settings.phase === p.phase;
             return (
@@ -296,6 +297,7 @@ export const VlmTrainView: React.FC<VlmTrainViewProps> = ({
                 </div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-main)', lineHeight: 1.5 }}>{p.what}</p>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{p.why}</p>
+                {p.phase === 1 && <AlignExplainer phase1Evals={evals.filter(e => e.phase === 1)} />}
                 <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
                   Questions: {tasksForPhase(p.phase, settings.tasks).map(t => VQA_TASKS.find(x => x.id === t)!.label.toLowerCase()).join(', ')}
                 </p>
@@ -323,6 +325,7 @@ export const VlmTrainView: React.FC<VlmTrainViewProps> = ({
         </div>
 
         <VlmPipeline phase={settings.phase} />
+
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
