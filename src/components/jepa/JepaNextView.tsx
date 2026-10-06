@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Box, Brain, Compass, Repeat } from 'lucide-react';
+import { ArrowRight, Box, Brain, Compass, Repeat, Wrench } from 'lucide-react';
 import { GoDeeper } from '../GoDeeper';
 
 /**
@@ -35,6 +35,53 @@ const SHIFTS: [string, string, string][] = [
   ['Probabilistic models', 'Energy-based models', 'Score how compatible two things are, rather than putting a probability on every possible outcome.'],
   ['Contrastive methods', 'Regularized methods', 'Prevent collapse by keeping embeddings spread out (like the VICReg term in the Train tab), not by pushing apart pairs of "negative" examples.'],
   ['Reinforcement learning', 'Model-predictive control', 'Plan by imagining outcomes with a world model; fall back on trial-and-error learning only when the model is wrong.'],
+];
+
+/** What a trained encoder gets used for, each with an example and why you'd skip the LLM there */
+const USES: { title: string; example: string; whyNotLlm: string }[] = [
+  {
+    title: 'New tasks from a few labels',
+    example:
+      'A factory has millions of unlabelled photos of circuit boards and 80 labelled photos of bad solder joints. A frozen encoder plus a linear head trained on those 80 checks boards at camera speed, on a box beside the line. Medical imaging works the same way: pathology models pre-trained without labels on huge slide collections then learn to grade tumours from a few expert-labelled cases.',
+    whyNotLlm:
+      'The difference is a subtle visual pattern with no everyday name, the head gives the same calibrated score every time, and fifty images a second through a chatbot would be slow and costly.',
+  },
+  {
+    title: 'Maps and coordinates (patch-level tasks)',
+    example:
+      'Each patch embedding keeps where it came from, so a light head on top can label every patch: forest canopy height from satellite photos, tumour outlines in a scan, or the point on an object where a robot gripper should close.',
+    whyNotLlm: 'The answer is a map or a pixel position, not a sentence, and language is a lossy channel for "exactly where".',
+  },
+  {
+    title: 'A head start for fine-tuning',
+    example:
+      'A conservation group fine-tunes a pre-trained encoder on 5,000 labelled camera-trap photos of local species, instead of the millions a model trained from scratch would need.',
+    whyNotLlm: 'You end up owning a small model you can run offline in the field and retrain whenever a new species turns up.',
+  },
+  {
+    title: 'Search and similarity',
+    example:
+      '"Find products that look like this photo", "more photos like this one", spotting near-duplicates in a dataset, or flagging a camera frame whose embedding is far from everything normal. The neighbours panel in Look inside is this, in miniature.',
+    whyNotLlm: 'Each image is embedded once, in milliseconds, and searching millions of stored vectors is fast. An LLM would have to look at the images again for every query.',
+  },
+  {
+    title: 'The eyes of a bigger system',
+    example:
+      'Vision-language models are mostly an image encoder feeding a language model: LLaVA, for example, puts an LLM on top of a CLIP encoder, and V-JEPA 2 was paired with an LLM to answer questions about videos. V-JEPA 2-AC kept its encoder frozen and trained a new action-conditioned predictor on top to plan robot movements.',
+    whyNotLlm:
+      'Here the encoder is part of the LLM system. The question is whether language belongs in the loop at all: a robot choosing motor commands 30 times a second gains little from turning what it sees into text first.',
+  },
+];
+
+/** Encoder + small head vs a multimodal LLM */
+const VERSUS: [string, string, string][] = [
+  ['Labels needed', 'A handful per task', 'None: you describe the task in a prompt'],
+  ['Output', 'Numbers: scores, maps, coordinates, vectors', 'Text'],
+  ['Speed and cost', 'Milliseconds; small enough to run on a device', 'Much slower; billions of parameters, usually on a server'],
+  ['Consistency', 'Deterministic, calibrated scores', 'Varies with the prompt and sampling'],
+  ['Data with little text about it online (scans, satellite bands, sensors)', 'Can pre-train on your raw data alone', 'Knows it mostly second-hand, through text'],
+  ['Fine visual detail', 'Kept in the embeddings', 'Squeezed through words'],
+  ['Open-ended questions and world knowledge', 'No', 'Its strength'],
 ];
 
 const TIMELINE: { when: string; what: string; text: string }[] = [
@@ -99,6 +146,57 @@ export const JepaNextView: React.FC<{ onNavigate: (tab: string) => void }> = ({ 
       <p>
         That second row is where the predictor stops being scaffolding and becomes the point. It has to "speak the encoder's
         language" (read embeddings, output embeddings in the same space), and that is exactly what lets it serve as a simulator.
+      </p>
+    </Section>
+
+    <Section icon={<Wrench size={18} color="var(--accent-cyan)" />} title="What's an encoder good for?">
+      <p>
+        On its own, the kept encoder can't name, draw or decide anything. It turns an image into embeddings: one per patch (which
+        keep where things are) and usually one for the whole image (their average). Everything useful comes from what you put on
+        top. Note that "vs an LLM" below really means a multimodal LLM, a chatbot you can show images to, and those contain an
+        image encoder like this one inside.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
+        {USES.map(u => (
+          <div key={u.title} style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--surface-inset)', border: '1px solid var(--border-color)' }}>
+            <p style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.85rem', marginBottom: 4 }}>{u.title}</p>
+            <p style={{ fontSize: '0.8rem', lineHeight: 1.55, marginBottom: 6 }}>{u.example}</p>
+            <p style={{ fontSize: '0.775rem', lineHeight: 1.5, color: 'var(--text-dim)' }}>
+              <b style={{ color: 'var(--text-muted)' }}>Why not just ask an LLM?</b> {u.whyNotLlm}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.825rem', minWidth: 560 }}>
+          <thead>
+            <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
+              <th style={{ padding: '6px 10px 6px 0', fontWeight: 600 }} />
+              <th style={{ padding: '6px 10px', fontWeight: 600 }}>Encoder + small head</th>
+              <th style={{ padding: '6px 10px', fontWeight: 600 }}>Multimodal LLM</th>
+            </tr>
+          </thead>
+          <tbody>
+            {VERSUS.map(([what, enc, llm]) => (
+              <tr key={what} style={{ borderTop: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '8px 10px 8px 0', color: 'var(--text-main)', fontWeight: 600 }}>{what}</td>
+                <td style={{ padding: '8px 10px' }}>{enc}</td>
+                <td style={{ padding: '8px 10px' }}>{llm}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        <B>When the LLM wins:</B> you have no labels and need an answer today; the task is open-ended ("what's wrong in this
+        photo?"); it needs knowledge of the world ("is this mushroom edible?"); or the volume is small enough that speed and cost
+        don't matter. A common path is to prototype with a multimodal LLM, then switch to an encoder and a small head once the
+        task is clear and it has to be fast, cheap and repeatable. Often the answer is both: the encoder as eyes, the language
+        model for reasoning.
+      </p>
+      <p>
+        <B>What it can't promise:</B> it learns whatever made the hidden patches predictable, which may not be what you care
+        about. The one trained here picks up where the shape is, but not which shape it is.
       </p>
     </Section>
 
